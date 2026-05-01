@@ -34,6 +34,9 @@ from cli.stats_handler import StatsCallbackHandler
 
 console = Console()
 
+# Module-level constant for portfolio file path
+PORTFOLIO_FILE = Path(__file__).parent.parent / "data" / "portfolio.json"
+
 app = typer.Typer(
     name="TradingAgents",
     help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
@@ -1221,8 +1224,7 @@ def analyze(
 @app.command()
 def portfolio():
     """View current portfolio summary."""
-    portfolio_file = Path(__file__).parent.parent / "data" / "portfolio.json"
-    manager = PortfolioManager(str(portfolio_file))
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
 
     positions = manager.get_positions()
     cash = manager.get_cash_balance()
@@ -1265,11 +1267,18 @@ def add_position(
     """Add a position to the portfolio."""
     from datetime import datetime
 
+    # Input validation
+    if shares <= 0:
+        console.print("[red]Error: shares must be positive[/red]")
+        raise typer.Abort()
+    if price <= 0:
+        console.print("[red]Error: price must be positive[/red]")
+        raise typer.Abort()
+
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    portfolio_file = Path(__file__).parent.parent / "data" / "portfolio.json"
-    manager = PortfolioManager(str(portfolio_file))
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
     manager.add_position(ticker.upper(), shares, price, date, broker)
 
     console.print(f"[green]Added position:[/green] {ticker.upper()} {shares} shares @ ${price:.2f}")
@@ -1280,8 +1289,7 @@ def remove_position(
     ticker: str = typer.Argument(..., help="Stock ticker symbol to remove")
 ):
     """Remove a position from the portfolio."""
-    portfolio_file = Path(__file__).parent.parent / "data" / "portfolio.json"
-    manager = PortfolioManager(str(portfolio_file))
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
 
     if manager.remove_position(ticker.upper()):
         console.print(f"[green]Removed position:[/green] {ticker.upper()}")
@@ -1318,10 +1326,10 @@ def analyze_stock(
     init_agent_state = graph.propagator.create_initial_state(ticker.upper(), date)
     args = graph.propagator.get_graph_args()
 
+    console.print("[cyan]Analyzing...[/cyan]")
     for chunk in graph.graph.stream(init_agent_state, **args):
         pass  # Stream chunks, display handled by the graph
-
-    console.print(f"[green]Analysis complete for {ticker.upper()}[/green]")
+    console.print("[green]Done![/green]")
 
 
 if __name__ == "__main__":
