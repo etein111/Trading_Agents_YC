@@ -17,6 +17,16 @@ def _escape_html(text):
     return str(text)
 
 
+def _fmt_price(price):
+    """Format price for display in email."""
+    return f"${price:.2f}"
+
+
+def _fmt_pnl(pnl):
+    """Format P/L for display in email."""
+    return f"${pnl:.2f}"
+
+
 @dataclass
 class EmailMessage:
     """Email message structure."""
@@ -89,12 +99,20 @@ class GmailPusher:
         sentiment = report.get("sentiment", "neutral")
         events = report.get("events", [])
 
+        # Build table rows
+        rows = []
+        for p in positions:
+            ticker = _escape_html(p['ticker'])
+            shares = _escape_html(str(p['shares']))
+            price = _escape_html(_fmt_price(p['entry_price']))
+            rows.append(f"<tr><td>{ticker}</td><td>{shares}</td><td>{price}</td></tr>")
+
         body = f"""
         <h2>Pre-market Briefing</h2>
         <h3>Portfolio Positions</h3>
         <table border="1" cellpadding="5" cellspacing="0">
             <tr><th>Ticker</th><th>Shares</th><th>Entry Price</th></tr>
-            {''.join(f"<tr><td>{_escape_html(p['ticker'])}</td><td>{_escape_html(p['shares'])}</td><td>${_escape_html(f'{p['entry_price']:.2f}')}</td></tr>" for p in positions)}
+            {''.join(rows)}
         </table>
 
         <h3>Market Sentiment</h3>
@@ -119,12 +137,21 @@ class GmailPusher:
         positions = report.get("positions", [])
         analysis = report.get("analysis", "")
 
+        # Build table rows
+        rows = []
+        for p in positions:
+            ticker = _escape_html(p['ticker'])
+            shares = _escape_html(str(p['shares']))
+            current = _escape_html(p.get('current_price', 'N/A'))
+            action = _escape_html(p.get('action', 'Hold'))
+            rows.append(f"<tr><td>{ticker}</td><td>{shares}</td><td>{current}</td><td>{action}</td></tr>")
+
         body = f"""
         <h2>After-hours Report</h2>
         <h3>Portfolio Performance</h3>
         <table border="1" cellpadding="5" cellspacing="0">
             <tr><th>Ticker</th><th>Shares</th><th>Current/Pivot</th><th>Action</th></tr>
-            {''.join(f"<tr><td>{_escape_html(p['ticker'])}</td><td>{_escape_html(p['shares'])}</td><td>{_escape_html(p.get('current_price', 'N/A'))}</td><td>{_escape_html(p.get('action', 'Hold'))}</td></tr>" for p in positions)}
+            {''.join(rows)}
         </table>
 
         <h3>Analysis Summary</h3>
@@ -146,17 +173,34 @@ class GmailPusher:
         positions = report.get("positions", [])
         recommendations = report.get("recommendations", [])
 
+        # Determine color for gain/loss
+        gl_color = 'green' if gain_loss >= 0 else 'red'
+        gl_formatted = _escape_html(_fmt_price(gain_loss))
+
+        # Build table rows
+        rows = []
+        for p in positions:
+            ticker = _escape_html(p['ticker'])
+            shares = _escape_html(str(p['shares']))
+            entry = _escape_html(_fmt_price(p['entry_price']))
+            current = _escape_html(p.get('current_price', 'N/A'))
+            pnl = p.get('pnl', 0)
+            pnl_color = 'green' if pnl >= 0 else 'red'
+            pnl_formatted = _escape_html(_fmt_pnl(pnl))
+            rec = _escape_html(p.get('recommendation', 'Hold'))
+            rows.append(f"<tr><td>{ticker}</td><td>{shares}</td><td>{entry}</td><td>{current}</td><td style='color: {pnl_color}'>{pnl_formatted}</td><td>{rec}</td></tr>")
+
         body = f"""
         <h2>Weekly Portfolio Report</h2>
 
         <h3>Portfolio Summary</h3>
-        <p>Total Value: <strong>${portfolio_value:,.2f}</strong></p>
-        <p>Gain/Loss: <strong style="color: {'green' if gain_loss >= 0 else 'red'}">${gain_loss:,.2f}</strong></p>
+        <p>Total Value: <strong>{_escape_html(_fmt_price(portfolio_value))}</strong></p>
+        <p>Gain/Loss: <strong style="color: {gl_color}">{gl_formatted}</strong></p>
 
         <h3>Current Positions</h3>
         <table border="1" cellpadding="5" cellspacing="0">
             <tr><th>Ticker</th><th>Shares</th><th>Entry</th><th>Current</th><th>P/L</th><th>Action</th></tr>
-            {''.join(f"<tr><td>{_escape_html(p['ticker'])}</td><td>{_escape_html(p['shares'])}</td><td>${_escape_html(f'{p['entry_price']:.2f}')}</td><td>${_escape_html(p.get('current_price', 'N/A'))}</td><td style='color: {'green' if p.get('pnl', 0) >= 0 else 'red'}'>${_escape_html(f'{p.get('pnl', 0):.2f}')}</td><td>{_escape_html(p.get('recommendation', 'Hold'))}</td></tr>" for p in positions)}
+            {''.join(rows)}
         </table>
 
         <h3>Recommendations</h3>

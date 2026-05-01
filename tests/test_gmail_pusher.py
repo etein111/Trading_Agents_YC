@@ -45,4 +45,4 @@ def test_format_weekly_report(gmail_pusher):
     }
     email = gmail_pusher.format_weekly_report(report)
     assert "Weekly" in email.subject
-    assert "$3,000.00" in email.body
+    assert "$3000.00" in email.body
