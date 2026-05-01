@@ -3,16 +3,6 @@
 import json
 import os
 from typing import Optional
-from dataclasses import dataclass, asdict
-
-
-@dataclass
-class Position:
-    ticker: str
-    shares: float
-    entry_price: float
-    entry_date: str
-    broker: str = "unknown"
 
 
 class PortfolioManager:
@@ -53,8 +43,11 @@ class PortfolioManager:
             "last_updated": self._get_date(),
             "positions": self._positions
         }
-        with open(self.portfolio_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        try:
+            with open(self.portfolio_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except IOError:
+            raise IOError(f"Failed to save portfolio to {self.portfolio_file}")
 
     def _get_date(self) -> str:
         """Get current date string."""
