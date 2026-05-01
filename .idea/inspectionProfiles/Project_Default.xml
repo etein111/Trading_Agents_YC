@@ -1,0 +1,82 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="69">
+            <item index="0" class="java.lang.String" itemvalue="fsspec" />
+            <item index="1" class="java.lang.String" itemvalue="protobuf" />
+            <item index="2" class="java.lang.String" itemvalue="llama-index-core" />
+            <item index="3" class="java.lang.String" itemvalue="opentelemetry-proto" />
+            <item index="4" class="java.lang.String" itemvalue="opentelemetry-exporter-otlp-proto-grpc" />
+            <item index="5" class="java.lang.String" itemvalue="langchain-core" />
+            <item index="6" class="java.lang.String" itemvalue="opentelemetry-api" />
+            <item index="7" class="java.lang.String" itemvalue="opentelemetry-sdk" />
+            <item index="8" class="java.lang.String" itemvalue="opentelemetry-exporter-otlp-proto-common" />
+            <item index="9" class="java.lang.String" itemvalue="opentelemetry-semantic-conventions" />
+            <item index="10" class="java.lang.String" itemvalue="traitlets" />
+            <item index="11" class="java.lang.String" itemvalue="yarg" />
+            <item index="12" class="java.lang.String" itemvalue="pickleshare" />
+            <item index="13" class="java.lang.String" itemvalue="defusedxml" />
+            <item index="14" class="java.lang.String" itemvalue="nbclient" />
+            <item index="15" class="java.lang.String" itemvalue="types-PyYAML" />
+            <item index="16" class="java.lang.String" itemvalue="executing" />
+            <item index="17" class="java.lang.String" itemvalue="MarkupSafe" />
+            <item index="18" class="java.lang.String" itemvalue="tinycss2" />
+            <item index="19" class="java.lang.String" itemvalue="docopt" />
+            <item index="20" class="java.lang.String" itemvalue="Pygments" />
+            <item index="21" class="java.lang.String" itemvalue="pyzmq" />
+            <item index="22" class="java.lang.String" itemvalue="bleach" />
+            <item index="23" class="java.lang.String" itemvalue="soupsieve" />
+            <item index="24" class="java.lang.String" itemvalue="json_repair" />
+            <item index="25" class="java.lang.String" itemvalue="jsonschema" />
+            <item index="26" class="java.lang.String" itemvalue="beautifulsoup4" />
+            <item index="27" class="java.lang.String" itemvalue="jupyter_client" />
+            <item index="28" class="java.lang.String" itemvalue="pure_eval" />
+            <item index="29" class="java.lang.String" itemvalue="pexpect" />
+            <item index="30" class="java.lang.String" itemvalue="pypdf" />
+            <item index="31" class="java.lang.String" itemvalue="nbconvert" />
+            <item index="32" class="java.lang.String" itemvalue="appnope" />
+            <item index="33" class="java.lang.String" itemvalue="attrs" />
+            <item index="34" class="java.lang.String" itemvalue="jedi" />
+            <item index="35" class="java.lang.String" itemvalue="jupyterlab_pygments" />
+            <item index="36" class="java.lang.String" itemvalue="asttokens" />
+            <item index="37" class="java.lang.String" itemvalue="backcall" />
+            <item index="38" class="java.lang.String" itemvalue="platformdirs" />
+            <item index="39" class="java.lang.String" itemvalue="langchain-classic" />
+            <item index="40" class="java.lang.String" itemvalue="rank-bm25" />
+            <item index="41" class="java.lang.String" itemvalue="referencing" />
+            <item index="42" class="java.lang.String" itemvalue="decorator" />
+            <item index="43" class="java.lang.String" itemvalue="matplotlib-inline" />
+            <item index="44" class="java.lang.String" itemvalue="neo4j-graphrag" />
+            <item index="45" class="java.lang.String" itemvalue="ptyprocess" />
+            <item index="46" class="java.lang.String" itemvalue="pandocfilters" />
+            <item index="47" class="java.lang.String" itemvalue="wcwidth" />
+            <item index="48" class="java.lang.String" itemvalue="jupyter_core" />
+            <item index="49" class="java.lang.String" itemvalue="Jinja2" />
+            <item index="50" class="java.lang.String" itemvalue="jsonschema-specifications" />
+            <item index="51" class="java.lang.String" itemvalue="rpds-py" />
+            <item index="52" class="java.lang.String" itemvalue="stack-data" />
+            <item index="53" class="java.lang.String" itemvalue="scipy" />
+            <item index="54" class="java.lang.String" itemvalue="tornado" />
+            <item index="55" class="java.lang.String" itemvalue="prompt_toolkit" />
+            <item index="56" class="java.lang.String" itemvalue="parso" />
+            <item index="57" class="java.lang.String" itemvalue="nbformat" />
+            <item index="58" class="java.lang.String" itemvalue="ipython" />
+            <item index="59" class="java.lang.String" itemvalue="pipreqs" />
+            <item index="60" class="java.lang.String" itemvalue="fastjsonschema" />
+            <item index="61" class="java.lang.String" itemvalue="mistune" />
+            <item index="62" class="java.lang.String" itemvalue="langchain-neo4j" />
+            <item index="63" class="java.lang.String" itemvalue="neo4j" />
+            <item index="64" class="java.lang.String" itemvalue="langchain-text-splitters" />
+            <item index="65" class="java.lang.String" itemvalue="webencodings" />
+            <item index="66" class="java.lang.String" itemvalue="uuid_utils" />
+            <item index="67" class="java.lang.String" itemvalue="fastapi" />
+            <item index="68" class="java.lang.String" itemvalue="gradio" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
