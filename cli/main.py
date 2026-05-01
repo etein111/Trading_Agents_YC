@@ -26,12 +26,16 @@ from rich.rule import Rule
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
+from portfolio.manager import PortfolioManager
 from cli.models import AnalystType
 from cli.utils import *
 from cli.announcements import fetch_announcements, display_announcements
 from cli.stats_handler import StatsCallbackHandler
 
 console = Console()
+
+# Module-level constant for portfolio file path
+PORTFOLIO_FILE = Path(__file__).parent.parent / "data" / "portfolio.json"
 
 app = typer.Typer(
     name="TradingAgents",
@@ -1215,6 +1219,117 @@ def analyze(
         n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
         console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
     run_analysis(checkpoint=checkpoint)
+
+
+@app.command()
+def portfolio():
+    """View current portfolio summary."""
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
+
+    positions = manager.get_positions()
+    cash = manager.get_cash_balance()
+
+    console.print("\n[bold cyan]Portfolio Summary[/bold cyan]\n")
+    console.print(f"Cash Balance: ${cash:,.2f}\n")
+
+    if not positions:
+        console.print("[yellow]No positions found.[/yellow]")
+        return
+
+    table = Table(show_header=True, box=box.MINIMAL)
+    table.add_column("Ticker", style="green")
+    table.add_column("Shares", style="cyan")
+    table.add_column("Entry Price", style="yellow")
+    table.add_column("Entry Date", style="magenta")
+    table.add_column("Broker", style="white")
+
+    for pos in positions:
+        table.add_row(
+            pos["ticker"],
+            str(pos["shares"]),
+            f"${pos['entry_price']:.2f}",
+            pos["entry_date"],
+            pos["broker"]
+        )
+
+    console.print(table)
+    console.print()
+
+
+@app.command()
+def add_position(
+    ticker: str = typer.Argument(..., help="Stock ticker symbol"),
+    shares: float = typer.Argument(..., help="Number of shares"),
+    price: float = typer.Argument(..., help="Entry price per share"),
+    date: str = typer.Option(None, "--date", help="Entry date (YYYY-MM-DD)"),
+    broker: str = typer.Option("Trade25", "--broker", help="Broker name")
+):
+    """Add a position to the portfolio."""
+    from datetime import datetime
+
+    # Input validation
+    if shares <= 0:
+        console.print("[red]Error: shares must be positive[/red]")
+        raise typer.Abort()
+    if price <= 0:
+        console.print("[red]Error: price must be positive[/red]")
+        raise typer.Abort()
+
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
+    manager.add_position(ticker.upper(), shares, price, date, broker)
+
+    console.print(f"[green]Added position:[/green] {ticker.upper()} {shares} shares @ ${price:.2f}")
+
+
+@app.command()
+def remove_position(
+    ticker: str = typer.Argument(..., help="Stock ticker symbol to remove")
+):
+    """Remove a position from the portfolio."""
+    manager = PortfolioManager(str(PORTFOLIO_FILE))
+
+    if manager.remove_position(ticker.upper()):
+        console.print(f"[green]Removed position:[/green] {ticker.upper()}")
+    else:
+        console.print(f"[yellow]Position not found:[/yellow] {ticker.upper()}")
+
+
+@app.command()
+def analyze_stock(
+    ticker: str = typer.Argument(..., help="Stock ticker to analyze"),
+    date: str = typer.Option(None, "--date", help="Analysis date (YYYY-MM-DD)")
+):
+    """Analyze a stock using TradingAgents framework."""
+    from datetime import datetime
+
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    console.print(f"[cyan]Analyzing {ticker.upper()} on {date}...[/cyan]")
+
+    # Import here to avoid circular imports
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from tradingagents.default_config import DEFAULT_CONFIG
+
+    config = DEFAULT_CONFIG.copy()
+    config["output_language"] = "English"
+
+    graph = TradingAgentsGraph(
+        selected_analyst_keys=["market", "social", "news", "fundamentals"],
+        config=config,
+        debug=True
+    )
+
+    init_agent_state = graph.propagator.create_initial_state(ticker.upper(), date)
+    args = graph.propagator.get_graph_args()
+
+    console.print("[cyan]Analyzing...[/cyan]")
+    for chunk in graph.graph.stream(init_agent_state, **args):
+        pass  # Stream chunks, display handled by the graph
+    console.print("[green]Done![/green]")
 
 
 if __name__ == "__main__":

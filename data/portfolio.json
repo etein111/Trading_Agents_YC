@@ -1,0 +1,13 @@
+{
+  "cash_balance": 1400,
+  "last_updated": "2026-05-01",
+  "positions": [
+    {
+      "ticker": "AMZN",
+      "shares": 2,
+      "entry_price": 258.5,
+      "entry_date": "2026-04-29",
+      "broker": "Trade25"
+    }
+  ]
+}
