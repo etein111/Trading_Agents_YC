@@ -49,8 +49,13 @@ class Task:
             target_minutes = target_time.hour * 60 + target_time.minute
             return abs(current_minutes - target_minutes) <= 1
 
-        # For weekly, also check day
-        return True
+        # For weekly, also check time (same logic as daily)
+        if self.task_type == "weekly":
+            current_minutes = now.hour * 60 + now.minute
+            target_minutes = target_time.hour * 60 + target_time.minute
+            return abs(current_minutes - target_minutes) <= 1
+
+        return False
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -85,6 +90,7 @@ class SchedulerService:
         self.task_queue_file = task_queue_file
         self.log_file = log_file
         self.tasks: list[Task] = []
+        self._lock = threading.Lock()
         self._ensure_directories()
         self._load_queue()
         self._running = False
@@ -102,22 +108,27 @@ class SchedulerService:
             try:
                 with open(self.task_queue_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
-            except (json.JSONDecodeError, IOError):
-                self.tasks = []
+                    with self._lock:
+                        self.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+            except (json.JSONDecodeError, IOError, KeyError, TypeError):
+                with self._lock:
+                    self.tasks = []
         else:
-            self.tasks = []
+            with self._lock:
+                self.tasks = []
 
     def save_queue(self):
         """Save task queue to disk."""
-        data = {"tasks": [t.to_dict() for t in self.tasks]}
+        with self._lock:
+            data = {"tasks": [t.to_dict() for t in self.tasks]}
         with open(self.task_queue_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     def add_daily_task(self, name: str, time_str: str, callback: Callable) -> None:
         """Add a daily recurring task."""
         task = Task(name=name, task_type="daily", time_str=time_str, callback=callback)
-        self.tasks.append(task)
+        with self._lock:
+            self.tasks.append(task)
         self.save_queue()
 
     def add_weekly_task(self, name: str, time_str: str, days: list,
@@ -125,14 +136,17 @@ class SchedulerService:
         """Add a weekly recurring task."""
         task = Task(name=name, task_type="weekly", time_str=time_str,
                     days=days, callback=callback)
-        self.tasks.append(task)
+        with self._lock:
+            self.tasks.append(task)
         self.save_queue()
 
     def remove_task(self, name: str) -> bool:
         """Remove a task by name."""
-        original_len = len(self.tasks)
-        self.tasks = [t for t in self.tasks if t.name != name]
-        if len(self.tasks) < original_len:
+        with self._lock:
+            original_len = len(self.tasks)
+            self.tasks = [t for t in self.tasks if t.name != name]
+            removed = len(self.tasks) < original_len
+        if removed:
             self.save_queue()
             return True
         return False
