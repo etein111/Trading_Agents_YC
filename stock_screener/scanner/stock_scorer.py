@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 import yfinance as yf
+import pandas as pd
 
 from .config import SECTORS
 
@@ -74,7 +75,14 @@ class StockScorer:
             data = yf.Ticker(ticker, proxy=proxy).history(period="1mo")
             if len(data) < 10:
                 return 0.5
-            ret = (data["Close"].iloc[-1] / data["Close"].iloc[0]) - 1
+            close = data["Close"]
+            if isinstance(close, pd.DataFrame):
+                first_price = close.iloc[0, 0]
+                last_price = close.iloc[-1, 0]
+            else:
+                first_price = close.iloc[0]
+                last_price = close.iloc[-1]
+            ret = (last_price / first_price) - 1
             normalized = (ret + 0.20) / 0.40
             return max(0.0, min(1.0, normalized))
         except Exception:

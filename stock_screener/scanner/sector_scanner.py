@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 import yfinance as yf
+import pandas as pd
 
 from .config import SECTORS, WEIGHTS
 
@@ -23,7 +24,14 @@ def _score_momentum(etf_ticker: str, lookback: int = 20) -> float:
         data = yf.download(etf_ticker, period=f"{lookback}d", proxy=proxy, progress=False)
         if len(data) < 5:
             return 0.5
-        ret = (data["Close"].iloc[-1] / data["Close"].iloc[0]) - 1
+        close = data["Close"]
+        if isinstance(close, pd.DataFrame):
+            first_price = close.iloc[0, 0]
+            last_price = close.iloc[-1, 0]
+        else:
+            first_price = close.iloc[0]
+            last_price = close.iloc[-1]
+        ret = (last_price / first_price) - 1
         normalized = (ret + 0.20) / 0.40
         return max(0.0, min(1.0, normalized))
     except Exception:
