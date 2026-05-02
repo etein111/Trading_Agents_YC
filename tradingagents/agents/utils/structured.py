@@ -62,6 +62,12 @@ def invoke_structured_or_freetext(
     if structured_llm is not None:
         try:
             result = structured_llm.invoke(prompt)
+            if result is None:
+                raise ValueError("structured LLM returned None")
+            # If the model returns a raw string instead of a Pydantic model
+            # (some providers ignore structured output), fall through to free text.
+            if isinstance(result, str):
+                raise ValueError(f"structured LLM returned str instead of model: {result[:50]}")
             return render(result)
         except Exception as exc:
             logger.warning(

@@ -1,4 +1,5 @@
 from typing import Optional
+import os
 import datetime
 import typer
 from pathlib import Path
@@ -1316,9 +1317,12 @@ def analyze_stock(
 
     config = DEFAULT_CONFIG.copy()
     config["output_language"] = "English"
+    config["llm_provider"] = os.getenv("LLM_PROVIDER", "openai")
+    config["deep_think_llm"] = os.getenv("LLM_DEEP_MODEL", DEFAULT_CONFIG["deep_think_llm"])
+    config["quick_think_llm"] = os.getenv("LLM_QUICK_MODEL", DEFAULT_CONFIG["quick_think_llm"])
 
     graph = TradingAgentsGraph(
-        selected_analyst_keys=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals"],
         config=config,
         debug=True
     )

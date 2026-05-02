@@ -6,6 +6,18 @@ import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils, _clean_dataframe, yf_retry, load_ohlcv, filter_financials_by_date
 
+def _get_proxy():
+    """Return proxy dict for yfinance, or empty dict if no proxy configured."""
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    proxy = {}
+    if http_proxy:
+        proxy["http"] = http_proxy
+    if https_proxy:
+        proxy["https"] = https_proxy
+    return proxy if proxy else {}
+
+
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
@@ -19,7 +31,8 @@ def get_YFin_data_online(
     ticker = yf.Ticker(symbol.upper())
 
     # Fetch historical data for the specified date range
-    data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
+    proxy = _get_proxy()
+    data = yf_retry(lambda: ticker.history(start=start_date, end=end_date, proxy=proxy))
 
     # Check if data is empty
     if data.empty:

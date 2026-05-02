@@ -201,8 +201,14 @@ class TradingAgentsGraph:
             end = start + timedelta(days=holding_days + 7)  # buffer for weekends/holidays
             end_str = end.strftime("%Y-%m-%d")
 
-            stock = yf.Ticker(ticker).history(start=trade_date, end=end_str)
-            spy = yf.Ticker("SPY").history(start=trade_date, end=end_str)
+            proxy = {
+                "http": os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy"),
+                "https": os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"),
+            }
+            if not proxy["http"] and not proxy["https"]:
+                proxy = {}
+            stock = yf.Ticker(ticker).history(start=trade_date, end=end_str, proxy=proxy)
+            spy = yf.Ticker("SPY").history(start=trade_date, end=end_str, proxy=proxy)
 
             if len(stock) < 2 or len(spy) < 2:
                 return None, None, None

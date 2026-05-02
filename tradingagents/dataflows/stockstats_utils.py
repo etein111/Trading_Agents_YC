@@ -1,5 +1,6 @@
 import time
 import logging
+import requests
 
 import pandas as pd
 import yfinance as yf
@@ -10,6 +11,20 @@ import os
 from .config import get_config
 
 logger = logging.getLogger(__name__)
+
+
+def _get_proxy_session():
+    """Return a requests Session configured with proxy, or None if no proxy."""
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if not http_proxy and not https_proxy:
+        return None
+    session = requests.Session()
+    if http_proxy:
+        session.proxies["http"] = http_proxy
+    if https_proxy:
+        session.proxies["https"] = https_proxy
+    return session
 
 
 def yf_retry(func, max_retries=3, base_delay=2.0):
@@ -69,6 +84,7 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(data_file):
         data = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
     else:
+        session = _get_proxy_session()
         data = yf_retry(lambda: yf.download(
             symbol,
             start=start_str,
@@ -76,6 +92,7 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
             multi_level_index=False,
             progress=False,
             auto_adjust=True,
+            session=session,
         ))
         data = data.reset_index()
         data.to_csv(data_file, index=False, encoding="utf-8")
