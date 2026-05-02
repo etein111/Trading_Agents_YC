@@ -3,7 +3,7 @@
     {
       "name": "premarket_briefing",
       "task_type": "daily",
-      "time_str": "08:30",
+      "time_str": "20:00",
       "days": [],
       "last_run": null,
       "enabled": true
@@ -11,7 +11,7 @@
     {
       "name": "afterhours_report",
       "task_type": "daily",
-      "time_str": "16:00",
+      "time_str": "08:00",
       "days": [],
       "last_run": null,
       "enabled": true
@@ -23,22 +23,6 @@
       "days": [
         "Monday"
       ],
-      "last_run": null,
-      "enabled": true
-    },
-    {
-      "name": "premarket",
-      "task_type": "daily",
-      "time_str": "08:30",
-      "days": [],
-      "last_run": null,
-      "enabled": true
-    },
-    {
-      "name": "weekly_report",
-      "task_type": "weekly",
-      "time_str": "09:00",
-      "days": "Monday",
       "last_run": null,
       "enabled": true
     }
