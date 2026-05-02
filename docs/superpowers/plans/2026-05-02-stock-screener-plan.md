@@ -8,6 +8,10 @@
 
 **Tech Stack:** yfinance (data), existing Analyst agents (scoring), GmailPusher (email), SchedulerService (trigger), PortfolioManager (positions).
 
+**Import paths** (correct paths for existing code):
+- PortfolioManager: `from tradingagents.agents.portfolio.manager import PortfolioManager`
+- All other imports from `stock_screener.scanner.*` (new code)
+
 ---
 
 ## File Structure
@@ -85,17 +89,10 @@ Expected: FAIL — module not found
 
 ```python
 # stock_screener/scanner/__init__.py
+# Note: only export config constants at this stage. Other classes are created in Tasks 2-6.
 from .config import SECTORS, WEIGHTS, SCORE_THRESHOLDS, MAX_POSITION_WEIGHT
-from .anomaly_detector import AnomalyDetector
-from .sector_scanner import SectorScanner
-from .stock_scorer import StockScorer
-from .aggregator import Aggregator
-from .report_builder import ReportBuilder
 
-__all__ = [
-    "SECTORS", "WEIGHTS", "SCORE_THRESHOLDS", "MAX_POSITION_WEIGHT",
-    "AnomalyDetector", "SectorScanner", "StockScorer", "Aggregator", "ReportBuilder",
-]
+__all__ = ["SECTORS", "WEIGHTS", "SCORE_THRESHOLDS", "MAX_POSITION_WEIGHT"]
 ```
 
 ```python
@@ -183,17 +180,11 @@ class AnomalyDetector:
                  etf_price_data: dict | None = None,
                  policy_events: list | None = None,
                  insider_data: dict | None = None):
-        """
-        Args:
-            etf_volume_data: {sector_name: [vol_day1, vol_day2, ...]} — 5 days
-            etf_price_data: {sector_name: [price_day1, price_day2, ...]} — 5 days
-            policy_events: [{"sector": str, "event": str, "date": str}, ...]
-            insider_data: {sector_name: {"net_shares": int, "transactions": int}}
-        """
         self.etf_volume_data = etf_volume_data or {}
         self.etf_price_data = etf_price_data or {}
         self.policy_events = policy_events or []
         self.insider_data = insider_data or {}
+        # All detection methods handle None/empty inputs gracefully
 
     def detect(self) -> list[Anomaly]:
         anomalies = []
@@ -418,6 +409,7 @@ class SectorScanner:
             valuation = _score_valuation(stocks)
             fundamentals = _score_fundamentals(stocks)
             # Macro score — placeholder using momentum + news (simplified)
+            # TODO: macro scoring via News Analyst (alpha_vantage sentiment + policy events)
             macro = (momentum + valuation) / 2
 
             composite = (
@@ -757,7 +749,7 @@ git commit -m "feat(stock_screener): add Aggregator Layer 3"
 # tests/stock_screener/test_report_builder.py
 def test_rebalance_reduce_overweight():
     from stock_screener.scanner.report_builder import ReportBuilder
-    from portfolio.manager import PortfolioManager
+    from tradingagents.agents.portfolio.manager import PortfolioManager
 
     builder = ReportBuilder()
     positions = [{"ticker": "AMZN", "shares": 2, "entry_price": 258.5}]
@@ -785,7 +777,7 @@ Expected: FAIL
 
 from dataclasses import dataclass, field
 from typing import Annotated
-from portfolio.manager import PortfolioManager
+from tradingagents.agents.portfolio.manager import PortfolioManager
 from .config import MAX_POSITION_WEIGHT, SCORE_THRESHOLDS
 
 
@@ -1140,7 +1132,7 @@ Expected: FAIL
 # stock_screener/run_scanner.py
 """Entry point: runs the full stock screener pipeline."""
 
-from portfolio.manager import PortfolioManager
+from tradingagents.agents.portfolio.manager import PortfolioManager
 from scheduler.gmail_pusher import GmailPusher
 from stock_screener.scanner import (
     AnomalyDetector, SectorScanner, StockScorer,
