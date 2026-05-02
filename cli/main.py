@@ -465,145 +465,131 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     layout["footer"].update(Panel(stats_table, border_style="grey50"))
 
 
+def _parse_interval_to_date(interval: str) -> tuple[str, str | None]:
+    """Parse ANALYSIS_INTERVAL to (trade_date, end_date).
+
+    Formats:
+      "1w" / "1 week"  → (today, today + 7 days)
+      "1m" / "1 month"  → (today, today + 30 days)
+      "3m" / "3 months" → (today, today + 90 days)
+      "2026-05-10"      → ("2026-05-10", None)  single date
+      "2026-05-01,2026-05-10" → ("2026-05-01", "2026-05-10")  date range
+    """
+    interval = interval.strip()
+    today = datetime.datetime.now()
+
+    relative_map = {
+        "1w": 7, "1 week": 7,
+        "1m": 30, "1 month": 30,
+        "3m": 90, "3 months": 90,
+    }
+    if interval.lower() in relative_map:
+        days = relative_map[interval.lower()]
+        end = today + datetime.timedelta(days=days)
+        return today.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+    if "," in interval:
+        parts = interval.split(",", 1)
+        return parts[0].strip(), parts[1].strip()
+
+    return interval, None
+
+
+def _should_skip_from_env(env_key: str) -> tuple[bool, str | None]:
+    """Return (skip, value) if env key is set and non-empty."""
+    val = os.getenv(env_key)
+    if val and val.strip():
+        return True, val.strip()
+    return False, None
+
+
 def get_user_selections():
-    """Get all user selections before starting the analysis display."""
+    """Get user selections, reading from .env first and only prompting when unset."""
     # Display ASCII art welcome message
     with open(Path(__file__).parent / "static" / "welcome.txt", "r", encoding="utf-8") as f:
         welcome_ascii = f.read()
 
-    # Create welcome box content
     welcome_content = f"{welcome_ascii}\n"
     welcome_content += "[bold green]TradingAgents: Multi-Agents LLM Financial Trading Framework - CLI[/bold green]\n\n"
     welcome_content += "[bold]Workflow Steps:[/bold]\n"
     welcome_content += "I. Analyst Team → II. Research Team → III. Trader → IV. Risk Management → V. Portfolio Management\n\n"
-    welcome_content += (
-        "[dim]Built by [Tauric Research](https://github.com/TauricResearch)[/dim]"
-    )
+    welcome_content += "[dim]Built by [Tauric Research](https://github.com/TauricResearch)[/dim]"
 
-    # Create and center the welcome box
-    welcome_box = Panel(
-        welcome_content,
-        border_style="green",
-        padding=(1, 2),
-        title="Welcome to TradingAgents",
-        subtitle="Multi-Agents LLM Financial Trading Framework",
-    )
+    welcome_box = Panel(welcome_content, border_style="green", padding=(1, 2),
+                        title="Welcome to TradingAgents", subtitle="Multi-Agents LLM Financial Trading Framework")
     console.print(Align.center(welcome_box))
     console.print()
-    console.print()  # Add vertical space before announcements
+    console.print()
 
-    # Fetch and display announcements (silent on failure)
     announcements = fetch_announcements()
     display_announcements(console, announcements)
 
-    # Create a boxed questionnaire for each step
     def create_question_box(title, prompt, default=None):
-        box_content = f"[bold]{title}[/bold]\n"
-        box_content += f"[dim]{prompt}[/dim]"
+        box_content = f"[bold]{title}[/bold]\n{dim}{prompt}[/dim]"
         if default:
             box_content += f"\n[dim]Default: {default}[/dim]"
         return Panel(box_content, border_style="blue", padding=(1, 2))
 
-    # Step 1: Ticker symbol
-    console.print(
-        create_question_box(
-            "Step 1: Ticker Symbol",
-            "Enter the exact ticker symbol to analyze, including exchange suffix when needed (examples: SPY, CNC.TO, 7203.T, 0700.HK)",
-            "SPY",
-        )
-    )
-    selected_ticker = get_ticker()
+    # Step 1: Ticker
+    skip, val = _should_skip_from_env("TICKER")
+    if skip:
+        selected_ticker = val.upper()
+        console.print(f"[green]Ticker from .env:[/green] {selected_ticker}")
+    else:
+        console.print(create_question_box("Step 1: Ticker", "Stock ticker (e.g. AMZN, SPY)"))
+        selected_ticker = get_ticker().upper()
 
-    # Step 2: Analysis date
-    default_date = datetime.datetime.now().strftime("%Y-%m-%d")
-    console.print(
-        create_question_box(
-            "Step 2: Analysis Date",
-            "Enter the analysis date (YYYY-MM-DD)",
-            default_date,
-        )
-    )
-    analysis_date = get_analysis_date()
+    # Step 2: Analysis interval/date
+    skip, val = _should_skip_from_env("ANALYSIS_INTERVAL")
+    if skip:
+        analysis_date, end_date = _parse_interval_to_date(val)
+        console.print(f"[green]Interval from .env:[/green] {val} → {analysis_date}" +
+                      (f" → {end_date}" if end_date else ""))
+    else:
+        console.print(create_question_box("Step 2: Interval", "1w / 1m / 3m 或 YYYY-MM-DD 或 YYYY-MM-DD,YYYY-MM-DD", "1w"))
+        analysis_date, end_date = _get_analysis_interval()
 
     # Step 3: Output language
-    console.print(
-        create_question_box(
-            "Step 3: Output Language",
-            "Select the language for analyst reports and final decision"
-        )
-    )
-    output_language = ask_output_language()
+    skip, val = _should_skip_from_env("OUTPUT_LANGUAGE")
+    if skip:
+        output_language = val
+        console.print(f"[green]Output language from .env:[/green] {output_language}")
+    else:
+        console.print(create_question_box("Step 3: Output Language", "Report language"))
+        output_language = ask_output_language()
 
-    # Step 4: Select analysts
-    console.print(
-        create_question_box(
-            "Step 4: Analysts Team", "Select your LLM analyst agents for the analysis"
-        )
-    )
-    selected_analysts = select_analysts()
-    console.print(
-        f"[green]Selected analysts:[/green] {', '.join(analyst.value for analyst in selected_analysts)}"
-    )
+    # Step 4: Analysts
+    skip, val = _should_skip_from_env("ANALYSTS")
+    if skip:
+        selected_analysts = [AnalystType(a.strip()) for a in val.split(",")]
+        console.print(f"[green]Analysts from .env:[/green] {val}")
+    else:
+        console.print(create_question_box("Step 4: Analysts", "Select analyst agents"))
+        selected_analysts = select_analysts()
+        console.print(f"[green]Selected:[/green] {', '.join(a.value for a in selected_analysts)}")
 
     # Step 5: Research depth
-    console.print(
-        create_question_box(
-            "Step 5: Research Depth", "Select your research depth level"
-        )
-    )
-    selected_research_depth = select_research_depth()
+    skip, val = _should_skip_from_env("RESEARCH_DEPTH")
+    if skip:
+        selected_research_depth = int(val)
+        console.print(f"[green]Research depth from .env:[/green] {selected_research_depth}")
+    else:
+        console.print(create_question_box("Step 5: Research Depth", "Debate rounds"))
+        selected_research_depth = select_research_depth()
 
-    # Step 6: LLM Provider
-    console.print(
-        create_question_box(
-            "Step 6: LLM Provider", "Select your LLM provider"
-        )
-    )
-    selected_llm_provider, backend_url = select_llm_provider()
-
-    # Step 7: Thinking agents
-    console.print(
-        create_question_box(
-            "Step 7: Thinking Agents", "Select your thinking agents for analysis"
-        )
-    )
-    selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider)
-    selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
-
-    # Step 8: Provider-specific thinking configuration
-    thinking_level = None
-    reasoning_effort = None
-    anthropic_effort = None
-
-    provider_lower = selected_llm_provider.lower()
-    if provider_lower == "google":
-        console.print(
-            create_question_box(
-                "Step 8: Thinking Mode",
-                "Configure Gemini thinking mode"
-            )
-        )
-        thinking_level = ask_gemini_thinking_config()
-    elif provider_lower == "openai":
-        console.print(
-            create_question_box(
-                "Step 8: Reasoning Effort",
-                "Configure OpenAI reasoning effort level"
-            )
-        )
-        reasoning_effort = ask_openai_reasoning_effort()
-    elif provider_lower == "anthropic":
-        console.print(
-            create_question_box(
-                "Step 8: Effort Level",
-                "Configure Claude effort level"
-            )
-        )
-        anthropic_effort = ask_anthropic_effort()
+    # LLM config: always from .env (no interactive prompt for LLM selection)
+    selected_llm_provider = os.getenv("LLM_PROVIDER", "openai")
+    backend_url = os.getenv("BACKEND_URL") or ""
+    selected_shallow_thinker = os.getenv("LLM_QUICK_MODEL", "")
+    selected_deep_thinker = os.getenv("LLM_DEEP_MODEL", "")
+    thinking_level = os.getenv("GOOGLE_THINKING_LEVEL")
+    reasoning_effort = os.getenv("OPENAI_REASONING_EFFORT")
+    anthropic_effort = os.getenv("ANTHROPIC_EFFORT")
 
     return {
         "ticker": selected_ticker,
         "analysis_date": analysis_date,
+        "end_date": end_date,
         "analysts": selected_analysts,
         "research_depth": selected_research_depth,
         "llm_provider": selected_llm_provider.lower(),
@@ -619,7 +605,18 @@ def get_user_selections():
 
 def get_ticker():
     """Get ticker symbol from user input."""
-    return typer.prompt("", default="SPY")
+    return typer.prompt("").upper() or "SPY"
+
+
+def _get_analysis_interval() -> tuple[str, str | None]:
+    """Prompt for analysis interval/date with relative/absolute support."""
+    while True:
+        val = typer.prompt("", default="1w").strip()
+        try:
+            date, end = _parse_interval_to_date(val)
+            return date, end
+        except Exception:
+            console.print("[red]Invalid interval format. Try: 1w, 1m, 3m, YYYY-MM-DD, or YYYY-MM-DD,YYYY-MM-DD[/red]")
 
 
 def get_analysis_date():
@@ -1050,7 +1047,8 @@ def run_analysis(checkpoint: bool = False):
 
         # Initialize state and get graph args with callbacks
         init_agent_state = graph.propagator.create_initial_state(
-            selections["ticker"], selections["analysis_date"]
+            selections["ticker"], selections["analysis_date"],
+            end_date=selections.get("end_date"),
         )
         # Pass callbacks to graph config for tool execution tracking
         # (LLM tracking is handled separately via LLM constructor)
@@ -1296,44 +1294,6 @@ def remove_position(
         console.print(f"[green]Removed position:[/green] {ticker.upper()}")
     else:
         console.print(f"[yellow]Position not found:[/yellow] {ticker.upper()}")
-
-
-@app.command()
-def analyze_stock(
-    ticker: str = typer.Argument(..., help="Stock ticker to analyze"),
-    date: str = typer.Option(None, "--date", help="Analysis date (YYYY-MM-DD)")
-):
-    """Analyze a stock using TradingAgents framework."""
-    from datetime import datetime
-
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
-
-    console.print(f"[cyan]Analyzing {ticker.upper()} on {date}...[/cyan]")
-
-    # Import here to avoid circular imports
-    from tradingagents.graph.trading_graph import TradingAgentsGraph
-    from tradingagents.default_config import DEFAULT_CONFIG
-
-    config = DEFAULT_CONFIG.copy()
-    config["output_language"] = "English"
-    config["llm_provider"] = os.getenv("LLM_PROVIDER", "openai")
-    config["deep_think_llm"] = os.getenv("LLM_DEEP_MODEL", DEFAULT_CONFIG["deep_think_llm"])
-    config["quick_think_llm"] = os.getenv("LLM_QUICK_MODEL", DEFAULT_CONFIG["quick_think_llm"])
-
-    graph = TradingAgentsGraph(
-        selected_analysts=["market", "social", "news", "fundamentals"],
-        config=config,
-        debug=True
-    )
-
-    init_agent_state = graph.propagator.create_initial_state(ticker.upper(), date)
-    args = graph.propagator.get_graph_args()
-
-    console.print("[cyan]Analyzing...[/cyan]")
-    for chunk in graph.graph.stream(init_agent_state, **args):
-        pass  # Stream chunks, display handled by the graph
-    console.print("[green]Done![/green]")
 
 
 if __name__ == "__main__":
