@@ -8,6 +8,9 @@ import pandas as pd
 
 from .config import SECTORS, WEIGHTS
 
+# Set global yfinance proxy once
+yf.set_config(proxy={"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"})
+
 
 @dataclass
 class SectorScore:
@@ -21,7 +24,7 @@ def _score_momentum(etf_ticker: str, lookback: int = 20) -> float:
     """ETF price return over lookback days normalized to 0-1."""
     try:
         proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
-        data = yf.download(etf_ticker, period=f"{lookback}d", proxy=proxy, progress=False)
+        data = yf.download(etf_ticker, period=f"{lookback}d", progress=False)
         if len(data) < 5:
             return 0.5
         close = data["Close"]
@@ -42,9 +45,8 @@ def _score_valuation(sector_stocks: list[str]) -> float:
     """Median PE of sector stocks, normalized vs historical range (0-1)."""
     try:
         pes = []
-        proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
         for ticker in sector_stocks:
-            info = yf.Ticker(ticker, proxy=proxy).info
+            info = yf.Ticker(ticker).info
             pe = info.get("trailingPE") or info.get("forwardPE")
             if pe and pe > 0:
                 pes.append(pe)
@@ -60,10 +62,9 @@ def _score_valuation(sector_stocks: list[str]) -> float:
 def _score_fundamentals(sector_stocks: list[str]) -> float:
     """Average revenue growth of sector stocks (0-1)."""
     try:
-        proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
         growths = []
         for ticker in sector_stocks:
-            info = yf.Ticker(ticker, proxy=proxy).info
+            info = yf.Ticker(ticker).info
             rev_growth = info.get("revenueGrowth") or 0
             growths.append(rev_growth)
         avg = sum(growths) / len(growths)

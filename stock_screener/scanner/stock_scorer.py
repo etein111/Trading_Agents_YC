@@ -7,6 +7,9 @@ import pandas as pd
 
 from .config import SECTORS
 
+# Set global yfinance proxy once
+yf.set_config(proxy={"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"})
+
 
 @dataclass
 class StockScore:
@@ -71,8 +74,7 @@ class StockScorer:
 
     def _score_momentum(self, ticker: str) -> float:
         try:
-            proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
-            data = yf.Ticker(ticker, proxy=proxy).history(period="1mo")
+            data = yf.Ticker(ticker).history(period="1mo")
             if len(data) < 10:
                 return 0.5
             close = data["Close"]
@@ -90,8 +92,7 @@ class StockScorer:
 
     def _score_valuation(self, ticker: str) -> float:
         try:
-            proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
-            info = yf.Ticker(ticker, proxy=proxy).info
+            info = yf.Ticker(ticker).info
             pe = info.get("trailingPE") or info.get("forwardPE")
             if not pe or pe <= 0:
                 return 0.5
@@ -114,8 +115,7 @@ class StockScorer:
 
     def _score_fundamentals(self, ticker: str) -> float:
         try:
-            proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
-            info = yf.Ticker(ticker, proxy=proxy).info
+            info = yf.Ticker(ticker).info
             roe = info.get("returnOnEquity") or 0
             debt_to_equity = info.get("debtToEquity") or 100
             rev_growth = info.get("revenueGrowth") or 0
