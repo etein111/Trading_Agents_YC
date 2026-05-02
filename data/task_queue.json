@@ -3,7 +3,7 @@
     {
       "name": "screener_daily",
       "task_type": "daily",
-      "time_str": "20:00",
+      "time_str": "00:10",
       "days": [],
       "last_run": null,
       "enabled": true
@@ -11,7 +11,7 @@
     {
       "name": "screener_report",
       "task_type": "daily",
-      "time_str": "08:00",
+      "time_str": "00:10",
       "days": [],
       "last_run": null,
       "enabled": true
