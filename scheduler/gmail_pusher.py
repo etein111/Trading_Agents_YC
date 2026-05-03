@@ -171,9 +171,35 @@ class GmailPusher:
         """Format full stock screener + portfolio rebalancer report as HTML email."""
         scan_date = report.get("scan_date", "")
         sectors = report.get("sector_rankings", [])
+        all_stocks = report.get("all_stocks", [])
+        top_by_sector = report.get("top_by_sector", {})
         adjustments = report.get("adjustments", [])
         unchanged = report.get("unchanged", [])
         anomalies = report.get("anomalies", [])
+        positions = report.get("portfolio_positions", [])
+
+        # --- Anomaly alerts (top of report) ---
+        anomaly_section = ""
+        if anomalies:
+            anomaly_rows = ""
+            for a in anomalies:
+                severity_color = {"high": "red", "medium": "orange", "low": "gray"}.get(a.get("severity", "medium"), "gray")
+                anomaly_rows += f"""
+                <tr style="color:{severity_color}">
+                  <td><strong>{html.escape(a['sector'])}</strong></td>
+                  <td><strong>{html.escape(a['signal'])}</strong></td>
+                  <td>{html.escape(a.get('description', ''))}</td>
+                  <td>{html.escape(a.get('data_source', ''))}</td>
+                  <td>{html.escape(a.get('severity', 'medium').upper())}</td>
+                </tr>"""
+            anomaly_section = f"""
+    <div style="border:2px solid red;padding:10px;margin:10px 0;border-radius:5px">
+    <h2 style="color:red;margin-top:0">⚠️ 异动板块提醒</h2>
+    <table border='1' cellpadding='5' cellspacing='0'>
+      <tr><th>板块</th><th>信号类型</th><th>描述</th><th>数据来源</th><th>严重程度</th></tr>
+      {anomaly_rows}
+    </table>
+    </div>"""
 
         # --- Sector table ---
         sector_rows = ""
@@ -183,30 +209,65 @@ class GmailPusher:
         <tr>
           <td>{s['rank']}</td>
           <td><strong>{html.escape(s['name'])}</strong></td>
-          <td>{s['score']:.3f}</td>
-          <td>{b.get('momentum', '-')}</td>
-          <td>{b.get('valuation', '-')}</td>
-          <td>{b.get('macro', '-')}</td>
-          <td>{b.get('fundamentals', '-')}</td>
+          <td><strong>{s['score']:.3f}</strong></td>
+          <td>{b.get('momentum', '-'):.3f}</td>
+          <td>{b.get('valuation', '-'):.3f}</td>
+          <td>{b.get('macro', '-'):.3f}</td>
+          <td>{b.get('fundamentals', '-'):.3f}</td>
         </tr>"""
         sectors_table = f"""
-    <h3>板块扫描结果</h3>
+    <h2>一、板块扫描结果</h2>
+    <p>权重方法: A(动量)×0.4 + B(估值)×0.3 + E(宏观)×0.2 + C(基本面)×0.1</p>
     <table border='1' cellpadding='5' cellspacing='0'>
       <tr><th>排名</th><th>板块</th><th>综合得分</th><th>动量(A)</th><th>估值(B)</th><th>宏观(E)</th><th>基本面(C)</th></tr>
       {sector_rows}
     </table>"""
 
-        # --- Anomaly alerts ---
-        anomaly_section = ""
-        if anomalies:
-            anomaly_rows = ""
-            for a in anomalies:
-                anomaly_rows += f"<tr><td>{html.escape(a['sector'])}</td><td>{html.escape(a['signal'])}</td><td>{html.escape(a.get('description', ''))}</td><td>{html.escape(a.get('data_source', ''))}</td></tr>"
-            anomaly_section = f"""
-    <h3 style='color:red'>⚠️ 异动板块提醒</h3>
+        # --- Individual stock recommendations (top 3 per sector) ---
+        stock_rows = ""
+        for sector_name, stocks in top_by_sector.items():
+            for stock_data in stocks:
+                scores = stock_data.get("scores", {})
+                stock_rows += f"""
+        <tr>
+          <td><strong>{html.escape(stock_data.get('stock', ''))}</strong></td>
+          <td>{html.escape(sector_name)}</td>
+          <td><strong>{stock_data.get('composite', 0):.3f}</strong></td>
+          <td>{scores.get('momentum', '-')}</td>
+          <td>{scores.get('valuation', '-')}</td>
+          <td>{scores.get('macro', '-')}</td>
+          <td>{scores.get('fundamentals', '-')}</td>
+          <td>{html.escape(stock_data.get('rating', ''))}</td>
+        </tr>"""
+        stocks_table = f"""
+    <h2>二、个股推荐（每板块 Top 3）</h2>
     <table border='1' cellpadding='5' cellspacing='0'>
-      <tr><th>板块</th><th>信号</th><th>描述</th><th>数据来源</th></tr>
-      {anomaly_rows}
+      <tr><th>股票</th><th>板块</th><th>综合得分</th><th>动量</th><th>估值</th><th>宏观</th><th>基本面</th><th>评级</th></tr>
+      {stock_rows}
+    </table>"""
+
+        # --- Portfolio positions ---
+        pos_section = ""
+        if positions:
+            pos_rows = ""
+            total_value = 0
+            for p in positions:
+                value = p.get("shares", 0) * p.get("entry_price", 0)
+                total_value += value
+                pos_rows += f"""
+        <tr>
+          <td>{html.escape(p.get('ticker', ''))}</td>
+          <td>{p.get('shares', 0)}</td>
+          <td>${p.get('entry_price', 0):.2f}</td>
+          <td>${value:.2f}</td>
+          <td>{html.escape(p.get('broker', ''))}</td>
+        </tr>"""
+            pos_section = f"""
+    <h2>三、现有持仓</h2>
+    <p>总持仓市值: <strong>${total_value:.2f}</strong></p>
+    <table border='1' cellpadding='5' cellspacing='0'>
+      <tr><th>股票</th><th>股数</th><th>买入价</th><th>市值</th><th>券商</th></tr>
+      {pos_rows}
     </table>"""
 
         # --- Adjustments ---
@@ -218,31 +279,201 @@ class GmailPusher:
             f"<tr><td>{html.escape(a['ticker'])}</td><td>建议新建仓{a['recommended_shares']}股</td><td>{html.escape(a.get('reason', ''))}</td></tr>"
             for a in adjustments if a["action"] == "NEW"
         )
-        unchanged_rows = "".join(
+        hold_rows = "".join(
             f"<tr><td>{html.escape(u['ticker'])}</td><td>{html.escape(u.get('reason', ''))}</td></tr>"
             for u in unchanged
         )
         adjustments_section = f"""
-    <h3>持仓调整建议</h3>
-    {('<table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>当前持仓</th><th>建议</th><th>原因</th></tr>' + reduce_rows + '</table>' if reduce_rows else '<p>无调整建议</p>')}
-    {('<h4>新建仓机会</h4><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>建议</th><th>原因</th></tr>' + new_rows + '</table>' if new_rows else '')}
-    {('<h4>持仓不变</h4><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>原因</th></tr>' + unchanged_rows + '</table>' if unchanged_rows else '')}"""
+    <h2>四、持仓调整建议</h2>
+    {('<h3>建议减仓</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>当前持仓</th><th>建议</th><th>原因</th></tr>' + reduce_rows + '</table>' if reduce_rows else '<p>无减仓建议</p>')}
+    {('<h3>新建仓机会</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>建议</th><th>原因</th></tr>' + new_rows + '</table>' if new_rows else '')}
+    {('<h3>持仓不变</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>原因</th></tr>' + hold_rows + '</table>' if hold_rows else '')}"""
 
         body = f"""
-    <h2>Daily Stock Screener & Portfolio Rebalancer</h2>
+    <div style="font-family:Arial,sans-serif;max-width:900px">
+    <h1 style="color:#333">Daily Stock Screener & Portfolio Rebalancer</h1>
     <p><em>扫描日期: {scan_date} | 报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}</em></p>
     {anomaly_section}
     {sectors_table}
+    {stocks_table}
+    {pos_section}
     {adjustments_section}
-    <p><em>Generated by TradingAgents Stock Screener</em></p>
+    <p style="margin-top:20px"><em>Generated by TradingAgents Stock Screener | 权重: A×0.4 + B×0.3 + E×0.2 + C×0.1</em></p>
+    </div>
     """
         return EmailMessage(
-            subject=f"Stock Screener Report — {scan_date}",
+            subject=f"[TradingAgents] Stock Screener Report — {scan_date}",
             body=body,
             to_email=self.recipient_email,
         )
 
-    def format_weekly_report(self, report: dict) -> EmailMessage:
+    def format_deep_screener_report(self, report: dict) -> "EmailMessage":
+        """Full report with per-stock TradingAgents analysis + decision layers."""
+        scan_date = report.get("scan_date", "")
+        deep_stocks = report.get("deep_stocks", [])
+        sector_rankings = report.get("sector_rankings", [])
+        anomalies = report.get("anomalies", [])
+        portfolio_positions = report.get("portfolio_positions", [])
+        adjustments = report.get("adjustments", [])
+        unchanged = report.get("unchanged", [])
+
+        # --- Anomaly alerts ---
+        anomaly_section = ""
+        if anomalies:
+            anomaly_rows = ""
+            for a in anomalies:
+                severity_color = {"high": "red", "medium": "orange", "low": "gray"}.get(
+                    a.get("severity", "medium"), "gray"
+                )
+                anomaly_rows += f"""
+                <tr style="color:{severity_color}">
+                  <td><strong>{html.escape(a.get('sector', ''))}</strong></td>
+                  <td><strong>{html.escape(a.get('signal', ''))}</strong></td>
+                  <td>{html.escape(a.get('description', ''))}</td>
+                  <td>{html.escape(a.get('data_source', ''))}</td>
+                  <td>{html.escape(a.get('severity', 'medium').upper())}</td>
+                </tr>"""
+            anomaly_section = f"""
+    <div style="border:2px solid red;padding:10px;margin:10px 0;border-radius:5px">
+    <h2 style="color:red;margin-top:0">异动板块提醒</h2>
+    <table border='1' cellpadding='5' cellspacing='0'>
+      <tr><th>板块</th><th>信号类型</th><th>描述</th><th>数据来源</th><th>严重程度</th></tr>
+      {anomaly_rows}
+    </table>
+    </div>"""
+
+        # --- Sector table ---
+        sector_rows = ""
+        for s in sector_rankings:
+            b = s.get("breakdown", {})
+            sector_rows += f"""
+        <tr>
+          <td>{s['rank']}</td>
+          <td><strong>{html.escape(s['name'])}</strong></td>
+          <td><strong>{s['score']:.3f}</strong></td>
+          <td>{b.get('momentum', '-'):.3f}</td>
+          <td>{b.get('valuation', '-'):.3f}</td>
+          <td>{b.get('macro', '-'):.3f}</td>
+          <td>{b.get('fundamentals', '-'):.3f}</td>
+        </tr>"""
+        sectors_table = f"""
+    <h2>一、板块扫描结果</h2>
+    <p>权重方法: A(动量)×0.4 + B(估值)×0.3 + E(宏观)×0.2 + C(基本面)×0.1</p>
+    <table border='1' cellpadding='5' cellspacing='0'>
+      <tr><th>排名</th><th>板块</th><th>综合得分</th><th>动量(A)</th><th>估值(B)</th><th>宏观(E)</th><th>基本面(C)</th></tr>
+      {sector_rows}
+    </table>"""
+
+        # --- Per-stock deep agent analysis ---
+        stock_sections = ""
+        for stock in deep_stocks:
+            if stock.get("error"):
+                stock_sections += f"""
+        <div style="border:1px solid #ccc;padding:15px;margin:15px 0;background:#fff3f3">
+        <h2>{html.escape(stock['ticker'])} — {html.escape(stock['sector'])}</h2>
+        <p style="color:red">Error: {html.escape(stock['error'])}</p>
+        </div>"""
+                continue
+            scores = stock.get("scores", {})
+            rating_color = {
+                "Buy": "green", "Overweight": "blue", "Hold": "gray",
+                "Underweight": "orange", "Sell": "red"
+            }.get(stock.get("rating", "Hold"), "gray")
+            stock_sections += f"""
+        <div style="border:1px solid #333;padding:15px;margin:15px 0;border-radius:8px">
+        <h2 style="color:#1a1a1a;margin-bottom:5px">
+          {html.escape(stock['ticker'])} — {html.escape(stock['sector'])}
+        </h2>
+        <p style="font-size:13px">
+          综合得分: <strong>{stock.get('composite_score', 0):.3f}</strong> &nbsp;|&nbsp;
+          评级: <strong style="color:{rating_color}">{html.escape(stock.get('rating', 'N/A'))}</strong>
+        </p>
+
+        <h3 style="color:#1565C0;border-left:4px solid #1565C0;padding-left:8px">动量/技术面 (Market Analyst)</h3>
+        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('market_report', 'No data'))}</div>
+
+        <h3 style="color:#6A1B9A;border-left:4px solid #6A1B9A;padding-left:8px">情绪面 (Social Media Analyst)</h3>
+        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('sentiment_report', 'No data'))}</div>
+
+        <h3 style="color:#E65100;border-left:4px solid #E65100;padding-left:8px">宏观/新闻面 (News Analyst)</h3>
+        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('news_report', 'No data'))}</div>
+
+        <h3 style="color:#2E7D32;border-left:4px solid #2E7D32;padding-left:8px">基本面 (Fundamentals Analyst)</h3>
+        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('fundamentals_report', 'No data'))}</div>
+
+        <h3 style="color:#0277BD;border-left:4px solid #0277BD;padding-left:8px">研究结论 (Research Manager)</h3>
+        <div style="background:#e3f2fd;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('investment_plan', 'No data'))}</div>
+
+        <h3 style="color:#33691E;border-left:4px solid #33691E;padding-left:8px">交易计划 (Trader)</h3>
+        <div style="background:#e8f5e9;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('trader_plan', 'No data'))}</div>
+
+        <h3 style="color:#BF360C;border-left:4px solid #BF360C;padding-left:8px">最终决策 (Portfolio Manager)</h3>
+        <div style="background:#fff3e0;padding:10px;white-space:pre-wrap;font-size:13px;font-weight:bold">{html.escape(stock.get('final_decision', 'No data'))}</div>
+        </div>"""
+
+        # --- Portfolio positions ---
+        pos_section = ""
+        if portfolio_positions:
+            pos_rows = ""
+            total_value = 0
+            for p in portfolio_positions:
+                value = p.get("shares", 0) * p.get("entry_price", 0)
+                total_value += value
+                pos_rows += f"""
+        <tr>
+          <td>{html.escape(p.get('ticker', ''))}</td>
+          <td>{p.get('shares', 0)}</td>
+          <td>${p.get('entry_price', 0):.2f}</td>
+          <td>${value:.2f}</td>
+          <td>{html.escape(p.get('broker', ''))}</td>
+        </tr>"""
+            pos_section = f"""
+    <h2 style="margin-top:30px">三、现有持仓</h2>
+    <p>总持仓市值: <strong>${total_value:.2f}</strong></p>
+    <table border='1' cellpadding='5' cellspacing='0'>
+      <tr><th>股票</th><th>股数</th><th>买入价</th><th>市值</th><th>券商</th></tr>
+      {pos_rows}
+    </table>"""
+
+        # --- Adjustments ---
+        reduce_rows = "".join(
+            f"<tr><td>{html.escape(a['ticker'])}</td><td>{a['current_shares']}</td>"
+            f"<td>减至{a['recommended_shares']}股</td><td>{html.escape(a.get('reason', ''))}</td></tr>"
+            for a in adjustments if a["action"] in ("REDUCE", "ADD")
+        )
+        new_rows = "".join(
+            f"<tr><td>{html.escape(a['ticker'])}</td><td>建议新建仓{a['recommended_shares']}股</td>"
+            f"<td>{html.escape(a.get('reason', ''))}</td></tr>"
+            for a in adjustments if a["action"] == "NEW"
+        )
+        hold_rows = "".join(
+            f"<tr><td>{html.escape(u['ticker'])}</td><td>{html.escape(u.get('reason', ''))}</td></tr>"
+            for u in unchanged
+        )
+        adjustments_section = f"""
+    <h2 style="margin-top:30px">四、持仓调整建议</h2>
+    {('<h3>建议减仓</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>当前持仓</th><th>建议</th><th>原因</th></tr>' + reduce_rows + '</table>' if reduce_rows else '<p>无减仓建议</p>')}
+    {('<h3>新建仓机会</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>建议</th><th>原因</th></tr>' + new_rows + '</table>' if new_rows else '')}
+    {('<h3>持仓不变</h3><table border="1" cellpadding="5" cellspacing="0"><tr><th>股票</th><th>原因</th></tr>' + hold_rows + '</table>' if hold_rows else '')}"""
+
+        body = f"""
+    <div style="font-family:Arial,sans-serif;max-width:950px">
+    <h1 style="color:#333">Daily Stock Screener & Agent Analysis</h1>
+    <p><em>扫描日期: {scan_date} | 报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}</em></p>
+    {anomaly_section}
+    {sectors_table}
+    <h2 style="margin-top:30px">二、Top 8 个股深度 Agent 分析</h2>
+    <p>每只股票经过: Market Analyst → Social Media Analyst → News Analyst → Fundamentals Analyst → Research Manager → Trader → Portfolio Manager</p>
+    {stock_sections}
+    {pos_section}
+    {adjustments_section}
+    <p style="margin-top:20px"><em>Generated by TradingAgents Stock Screener | 权重: A×0.4 + B×0.3 + E×0.2 + C×0.1</em></p>
+    </div>"""
+        return EmailMessage(
+            subject=f"[TradingAgents] Stock Screener — {scan_date}",
+            body=body,
+            to_email=self.recipient_email,
+        )
         """Format weekly comprehensive report."""
         portfolio_value = report.get("portfolio_value", 0)
         gain_loss = report.get("gain_loss", 0)

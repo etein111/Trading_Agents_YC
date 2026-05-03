@@ -1,5 +1,12 @@
 """Entry point: runs the full stock screener pipeline."""
 
+import os
+from pathlib import Path
+
+# Load .env file so Gmail credentials are available
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 from stock_screener.scanner import (
     AnomalyDetector, SectorScanner, StockScorer,
     Aggregator, ReportBuilder, SECTORS,
@@ -80,13 +87,34 @@ def send_daily_report():
     if not _has_gmail_pusher:
         raise ImportError("GmailPusher not available - check scheduler package installation")
     result = run_daily_scan()
+
+    # Deep agent analysis for top 8 stocks
+    all_stocks = result["all_stocks"]
+    top_tickers = [s["ticker"] for s in all_stocks[:8]]
+    from stock_screener.scanner.deep_analysis import run_deep_analysis
+    deep_results = run_deep_analysis(top_tickers, result["scan_date"], SECTORS, top_n=8)
+    # Fill composite scores from pre-computed all_stocks
+    score_map = {s["ticker"]: s["composite"] for s in all_stocks}
+    for d in deep_results:
+        d.composite_score = score_map.get(d.ticker, 0.0)
+
+    # Load portfolio for positions display
+    portfolio_positions = []
+    if _has_portfolio_manager:
+        pm = PortfolioManager("data/portfolio.json")
+        portfolio_positions = pm.get_positions()
+
     pusher = GmailPusher("yechuan958@gmail.com", "yechuan958@gmail.com")
     report = {
         "scan_date": result["scan_date"],
         "sector_rankings": result["sectors"],
+        "all_stocks": result["all_stocks"],
+        "top_by_sector": result["top_by_sector"],
         "adjustments": result["adjustments"],
         "unchanged": result["unchanged"],
         "anomalies": result["anomalies"],
+        "portfolio_positions": portfolio_positions,
+        "deep_stocks": [d.__dict__ for d in deep_results],
     }
-    msg = pusher.format_screener_report(report)
+    msg = pusher.format_deep_screener_report(report)
     pusher.send_with_retry(msg)
