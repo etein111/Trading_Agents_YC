@@ -1,7 +1,14 @@
 """Layer 4: Deep agent analysis for top N stocks via TradingAgentsGraph."""
 
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
+
+# Load .env so LLM provider settings are available
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -13,6 +20,23 @@ def _sector_for(ticker: str, sectors_map: dict) -> str:
         if ticker in cfg.get("stocks", []):
             return sector
     return "Unknown"
+
+
+def _build_config():
+    """Build config dict with .env LLM overrides, matching cli/main.py pattern."""
+    cfg = DEFAULT_CONFIG.copy()
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    deep_model = os.getenv("LLM_DEEP_MODEL", "")
+    quick_model = os.getenv("LLM_QUICK_MODEL", "")
+    backend_url = os.getenv("BACKEND_URL") or None
+    cfg["llm_provider"] = provider
+    if deep_model:
+        cfg["deep_think_llm"] = deep_model
+    if quick_model:
+        cfg["quick_think_llm"] = quick_model
+    cfg["backend_url"] = backend_url
+    cfg["checkpoint_enabled"] = False
+    return cfg
 
 
 @dataclass
@@ -51,7 +75,7 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
         graph = TradingAgentsGraph(
             selected_analysts=["market", "social", "news", "fundamentals"],
             debug=False,
-            config={**DEFAULT_CONFIG, "checkpoint_enabled": False},
+            config=_build_config(),
         )
         final_state, _ = graph.propagate(ticker, trade_date)
 

@@ -1,6 +1,7 @@
 """Scheduler task callbacks — wires task names to actual implementations."""
 
 import os
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -11,6 +12,13 @@ from stock_screener.run_scanner import run_daily_scan, send_daily_report
 from scheduler.gmail_pusher import GmailPusher
 
 
+def _run_and_wait(target, *args):
+    """Run target in a non-daemon thread and wait for completion."""
+    t = threading.Thread(target=target, args=args, daemon=False)
+    t.start()
+    t.join()
+
+
 def screener_daily_callback():
     """Run daily stock scan (Layer 0-3 pipeline). No email."""
     run_daily_scan()
@@ -18,7 +26,7 @@ def screener_daily_callback():
 
 def screener_report_callback():
     """Run daily scan and send Gmail report (Layer 4)."""
-    send_daily_report()
+    _run_and_wait(send_daily_report)
 
 
 def afterhours_report_callback():
@@ -27,13 +35,12 @@ def afterhours_report_callback():
 
     # Build afterhours positions from PortfolioManager if available
     positions = []
-    if _has_portfolio_manager:
-        try:
-            from tradingagents.agents.portfolio.manager import PortfolioManager
-            pm = PortfolioManager("data/portfolio.json")
-            positions = pm.get_positions()
-        except Exception:
-            pass
+    try:
+        from tradingagents.agents.portfolio.manager import PortfolioManager
+        pm = PortfolioManager("data/portfolio.json")
+        positions = pm.get_positions()
+    except Exception:
+        pass
 
     pusher = GmailPusher(
         sender_email=os.getenv("GMAIL_EMAIL"),
