@@ -15,7 +15,7 @@ def _build_llm_client():
     cfg = DEFAULT_CONFIG.copy()
     provider = os.getenv("LLM_PROVIDER", "openai").lower()
     deep_model = os.getenv("LLM_DEEP_MODEL", "")
-    quick_model = os.getenv("LLW_QUICK_MODEL", "")
+    quick_model = os.getenv("LLM_QUICK_MODEL", "")
     backend_url = os.getenv("BACKEND_URL") or None
     if deep_model:
         cfg["deep_think_llm"] = deep_model

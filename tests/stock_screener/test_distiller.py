@@ -34,7 +34,7 @@ def test_distill_social_media_returns_sentiment_metrics(distiller):
     result = distiller.distill(raw, "social")
     assert "summary" in result
     assert result["chart_data"]["sentiment_score"] == 0.72
-    assert result["chart_data"]["mention_volume_change"] == "42%"
+    assert result["chart_data"]["mention_volume"] == "42%"
 
 
 def test_distill_fundamentals_extracts_pe_and_growth(distiller):
