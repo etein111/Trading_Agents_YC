@@ -88,7 +88,8 @@ class ReportDB:
                 Path(__file__).parent.parent, "data", "reports.db"
             )
         self.db_path = db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        if self.db_path and self.db_path != ":memory:":
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
     def _init_db(self):
