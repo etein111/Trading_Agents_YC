@@ -117,4 +117,33 @@ def send_daily_report():
         "deep_stocks": [d.__dict__ for d in deep_results],
     }
     msg = pusher.format_deep_screener_report(report)
-    pusher.send_with_retry(msg)
+    from scheduler.report_db import ReportDB
+
+    db = ReportDB()
+    sectors_data = [
+        {"sector_name": s["name"], "rank": s["rank"],
+         "score": s["score"],
+         "momentum": s.get("breakdown", {}).get("momentum"),
+         "valuation": s.get("breakdown", {}).get("valuation"),
+         "macro_score": s.get("breakdown", {}).get("macro"),
+         "fundamentals": s.get("breakdown", {}).get("fundamentals")}
+        for s in result["sectors"]
+    ]
+
+    report_id = db.save_screener_report(
+        meta={
+            "report_type": "screener",
+            "scan_date": result["scan_date"],
+            "subject": f"[TradingAgents] Stock Screener — {result['scan_date']}",
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        stocks=[{**s.__dict__} for s in deep_results],
+        sectors=sectors_data,
+    )
+
+    # Try to send; update status on success/failure
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")

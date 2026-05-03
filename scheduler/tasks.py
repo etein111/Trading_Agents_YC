@@ -57,7 +57,22 @@ def afterhours_report_callback():
         "analysis": f"Top movers today: {', '.join(top_movers)}. "
                     f"Sector leaders: {[s['name'] for s in result['sectors'][:3]]}",
     })
-    pusher.send_with_retry(msg)
+    from scheduler.report_db import ReportDB
+    db = ReportDB()
+    report_id = db.save_afterhours_report(
+        meta={
+            "report_type": "afterhours",
+            "scan_date": report.get("date", ""),
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        positions=positions,
+    )
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
 
 
 def weekly_weight_review_callback():
@@ -89,7 +104,22 @@ def weekly_weight_review_callback():
             f"{s['rank']}. {s['name']}({s['score']:.3f})" for s in result["sectors"]
         ),
     })
-    pusher.send_with_retry(msg)
+    from scheduler.report_db import ReportDB
+    db = ReportDB()
+    report_id = db.save_weekly_report(
+        meta={
+            "report_type": "weekly",
+            "scan_date": report.get("week", ""),
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        positions=[],
+    )
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
 
 
 TASK_CALLBACKS = {
