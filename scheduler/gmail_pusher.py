@@ -2,6 +2,7 @@
 
 import html
 import smtplib
+import ssl
 import os
 import time
 from datetime import datetime
@@ -42,7 +43,7 @@ class GmailPusher:
 
     def __init__(self, sender_email: str, recipient_email: str,
                  smtp_host: str = "smtp.gmail.com",
-                 smtp_port: int = 587):
+                 smtp_port: int = 465):
         self.sender_email = sender_email
         self.recipient_email = recipient_email
         self.smtp_host = smtp_host
@@ -59,7 +60,7 @@ class GmailPusher:
         return email_user, email_pass
 
     def send_email(self, message: EmailMessage) -> bool:
-        """Send an email via Gmail SMTP."""
+        """Send an email via Gmail SMTP over SSL (port 465)."""
         try:
             email_user, email_pass = self._get_credentials()
 
@@ -72,8 +73,8 @@ class GmailPusher:
 
             msg.attach(MIMEText(message.body, 'html'))
 
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context) as server:
                 server.login(email_user, email_pass)
                 server.send_message(msg)
 
