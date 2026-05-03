@@ -3,7 +3,7 @@
     {
       "name": "screener_daily",
       "task_type": "daily",
-      "time_str": "00:27",
+      "time_str": "17:30",
       "days": [],
       "last_run": null,
       "enabled": true
@@ -11,18 +11,8 @@
     {
       "name": "screener_report",
       "task_type": "daily",
-      "time_str": "00:27",
+      "time_str": "17:30",
       "days": [],
-      "last_run": null,
-      "enabled": true
-    },
-    {
-      "name": "weekly_weight_review",
-      "task_type": "weekly",
-      "time_str": "09:00",
-      "days": [
-        "Friday"
-      ],
       "last_run": null,
       "enabled": true
     },
@@ -31,6 +21,16 @@
       "task_type": "daily",
       "time_str": "08:00",
       "days": [],
+      "last_run": null,
+      "enabled": true
+    },
+    {
+      "name": "weekly_weight_review",
+      "task_type": "weekly",
+      "time_str": "20:00",
+      "days": [
+        "Friday"
+      ],
       "last_run": null,
       "enabled": true
     }
