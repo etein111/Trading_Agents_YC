@@ -29,6 +29,77 @@ def _fmt_pnl(pnl):
     return f"${pnl:.2f}"
 
 
+COLOR_BUY = "#2E7D32"     # green — positive values
+COLOR_SELL = "#C62828"   # red — negative values
+COLOR_NEUTRAL = "#1565C0" # blue — neutral/key metrics
+COLOR_HEADER_BG = "#f0f4f8"
+
+
+def _render_metrics_table(chart_data: dict) -> str:
+    """Render chart_data dict as a compact HTML metrics table."""
+    if not chart_data:
+        return ""
+    label_map = {
+        "rsi": "RSI",
+        "sma_20": "SMA20",
+        "sma_50": "SMA50",
+        "macd_signal": "MACD",
+        "trend_direction": "Trend",
+        "volume_change_pct": "Volume Δ",
+        "sentiment_score": "Sentiment",
+        "mention_volume": "Volume",
+        "positive_pct": "Positive",
+        "negative_pct": "Negative",
+        "trend": "Trend",
+        "news_count": "News #",
+        "polarity": "Polarity",
+        "sector_relevance_score": "Sector Relevance",
+        "pe_ratio": "PE",
+        "forward_pe": "Forward PE",
+        "rev_growth": "Revenue Growth",
+        "profit_margin": "Profit Margin",
+        "eps": "EPS",
+        "dividend_yield": "Dividend Yield",
+        "bull_case_prob": "Bull %",
+        "bear_case_prob": "Bear %",
+        "risk_score": "Risk",
+        "entry_price": "Entry",
+        "target_price": "Target",
+        "stop_loss": "Stop Loss",
+        "position_size_pct": "Position",
+        "risk_reward_ratio": "Risk:Reward",
+        "rating": "Rating",
+        "conviction_pct": "Conviction",
+        "holding_period": "Holding",
+    }
+    rows = ""
+    for key, label in label_map.items():
+        val = chart_data.get(key)
+        if val is None:
+            continue
+        val_str = str(val)
+        if isinstance(val, (int, float)):
+            color = COLOR_BUY if val > 0 else (COLOR_SELL if val < 0 else COLOR_NEUTRAL)
+            val_str = f'<span style="color:{color}">{val_str}</span>'
+        rows += f"<tr><td style='padding:3px 10px;font-weight:bold;font-size:12px'>{label}</td><td style='padding:3px 10px;font-size:12px'>{val_str}</td></tr>"
+    if not rows:
+        return ""
+    return f"<table style='border-collapse:collapse;margin-top:6px;background:#fff'><tbody>{rows}</tbody></table>"
+
+
+def _agent_section(label: str, summary: str, chart_data: dict, border_color: str) -> str:
+    """Build one agent section with summary paragraph + metrics table."""
+    if not summary:
+        summary = "No data"
+    metrics_html = _render_metrics_table(chart_data)
+    metrics_block = f"<div style='margin-top:6px'>{metrics_html}</div>" if metrics_html else ""
+    return f"""
+    <div style='border-left:4px solid {border_color};padding:8px 12px;margin:6px 0;background:#fafafa'>
+      <div style='font-size:13px;line-height:1.6;color:#333;white-space:pre-wrap'>{_escape_html(summary)}</div>
+      {metrics_block}
+    </div>"""
+
+
 @dataclass
 class EmailMessage:
     """Email message structure."""
@@ -348,20 +419,20 @@ class GmailPusher:
         for s in sector_rankings:
             b = s.get("breakdown", {})
             sector_rows += f"""
-        <tr>
-          <td>{s['rank']}</td>
-          <td><strong>{html.escape(s['name'])}</strong></td>
-          <td><strong>{s['score']:.3f}</strong></td>
-          <td>{b.get('momentum', '-'):.3f}</td>
-          <td>{b.get('valuation', '-'):.3f}</td>
-          <td>{b.get('macro', '-'):.3f}</td>
-          <td>{b.get('fundamentals', '-'):.3f}</td>
+        <tr style="background:{COLOR_HEADER_BG}">
+          <td style="padding:5px">{s['rank']}</td>
+          <td style="padding:5px"><strong>{html.escape(s['name'])}</strong></td>
+          <td style="padding:5px"><strong>{s['score']:.3f}</strong></td>
+          <td style="padding:5px">{b.get('momentum', '-'):.3f}</td>
+          <td style="padding:5px">{b.get('valuation', '-'):.3f}</td>
+          <td style="padding:5px">{b.get('macro', '-'):.3f}</td>
+          <td style="padding:5px">{b.get('fundamentals', '-'):.3f}</td>
         </tr>"""
         sectors_table = f"""
     <h2>一、板块扫描结果</h2>
     <p>权重方法: A(动量)×0.4 + B(估值)×0.3 + E(宏观)×0.2 + C(基本面)×0.1</p>
-    <table border='1' cellpadding='5' cellspacing='0'>
-      <tr><th>排名</th><th>板块</th><th>综合得分</th><th>动量(A)</th><th>估值(B)</th><th>宏观(E)</th><th>基本面(C)</th></tr>
+    <table style="border-collapse:collapse;width:100%" border='1' cellpadding='5' cellspacing='0'>
+      <tr style="background:{COLOR_HEADER_BG}"><th style="padding:5px">排名</th><th style="padding:5px">板块</th><th style="padding:5px">综合得分</th><th style="padding:5px">动量(A)</th><th style="padding:5px">估值(B)</th><th style="padding:5px">宏观(E)</th><th style="padding:5px">基本面(C)</th></tr>
       {sector_rows}
     </table>"""
 
@@ -375,42 +446,71 @@ class GmailPusher:
         <p style="color:red">Error: {html.escape(stock['error'])}</p>
         </div>"""
                 continue
-            scores = stock.get("scores", {})
+
+            ticker = html.escape(stock.get('ticker', ''))
+            sector = html.escape(stock.get('sector', ''))
+            composite = stock.get('composite_score', 0)
+            rating = stock.get('rating', 'Hold')
             rating_color = {
-                "Buy": "green", "Overweight": "blue", "Hold": "gray",
-                "Underweight": "orange", "Sell": "red"
-            }.get(stock.get("rating", "Hold"), "gray")
-            stock_sections += f"""
-        <div style="border:1px solid #333;padding:15px;margin:15px 0;border-radius:8px">
-        <h2 style="color:#1a1a1a;margin-bottom:5px">
-          {html.escape(stock['ticker'])} — {html.escape(stock['sector'])}
-        </h2>
-        <p style="font-size:13px">
-          综合得分: <strong>{stock.get('composite_score', 0):.3f}</strong> &nbsp;|&nbsp;
-          评级: <strong style="color:{rating_color}">{html.escape(stock.get('rating', 'N/A'))}</strong>
-        </p>
+                "Buy": COLOR_BUY, "Overweight": COLOR_NEUTRAL, "Hold": "gray",
+                "Underweight": "#E65100", "Sell": COLOR_SELL
+            }.get(rating, "gray")
+            rating_badge = f"<span style='background:{rating_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px'>{html.escape(rating)}</span>"
 
-        <h3 style="color:#1565C0;border-left:4px solid #1565C0;padding-left:8px">动量/技术面 (Market Analyst)</h3>
-        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('market_report', 'No data'))}</div>
-
-        <h3 style="color:#6A1B9A;border-left:4px solid #6A1B9A;padding-left:8px">情绪面 (Social Media Analyst)</h3>
-        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('sentiment_report', 'No data'))}</div>
-
-        <h3 style="color:#E65100;border-left:4px solid #E65100;padding-left:8px">宏观/新闻面 (News Analyst)</h3>
-        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('news_report', 'No data'))}</div>
-
-        <h3 style="color:#2E7D32;border-left:4px solid #2E7D32;padding-left:8px">基本面 (Fundamentals Analyst)</h3>
-        <div style="background:#f5f5f5;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('fundamentals_report', 'No data'))}</div>
-
-        <h3 style="color:#0277BD;border-left:4px solid #0277BD;padding-left:8px">研究结论 (Research Manager)</h3>
-        <div style="background:#e3f2fd;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('investment_plan', 'No data'))}</div>
-
-        <h3 style="color:#33691E;border-left:4px solid #33691E;padding-left:8px">交易计划 (Trader)</h3>
-        <div style="background:#e8f5e9;padding:10px;white-space:pre-wrap;font-size:13px">{html.escape(stock.get('trader_plan', 'No data'))}</div>
-
-        <h3 style="color:#BF360C;border-left:4px solid #BF360C;padding-left:8px">最终决策 (Portfolio Manager)</h3>
-        <div style="background:#fff3e0;padding:10px;white-space:pre-wrap;font-size:13px;font-weight:bold">{html.escape(stock.get('final_decision', 'No data'))}</div>
+            # Build stock header
+            stock_header = f"""
+        <div style="border:1px solid #333;padding:15px;margin:15px 0;border-radius:8px;background:#fff">
+          <h2 style="color:#1a1a1a;margin:0 0 8px">{ticker} — {sector}</h2>
+          <p style="font-size:13px;margin:0">
+            综合得分: <strong>{composite:.3f}</strong> &nbsp;|&nbsp; 评级: {rating_badge}
+          </p>
         </div>"""
+
+            # 7 agent sections using _agent_section helper
+            market_sec = _agent_section(
+                "技术面",
+                stock.get("market_summary", ""),
+                stock.get("market_chart_data", {}),
+                "#1565C0"
+            )
+            sentiment_sec = _agent_section(
+                "情绪面",
+                stock.get("sentiment_summary", ""),
+                stock.get("sentiment_chart_data", {}),
+                "#6A1B9A"
+            )
+            news_sec = _agent_section(
+                "宏观/新闻面",
+                stock.get("news_summary", ""),
+                stock.get("news_chart_data", {}),
+                "#E65100"
+            )
+            fundamentals_sec = _agent_section(
+                "基本面",
+                stock.get("fundamentals_summary", ""),
+                stock.get("fundamentals_chart_data", {}),
+                "#2E7D32"
+            )
+            research_sec = _agent_section(
+                "研究结论",
+                stock.get("investment_plan_summary", ""),
+                {},
+                "#0277BD"
+            )
+            trader_sec = _agent_section(
+                "交易计划",
+                stock.get("trader_plan_summary", ""),
+                {},
+                "#33691E"
+            )
+            decision_sec = _agent_section(
+                "最终决策",
+                stock.get("final_decision_summary", ""),
+                {},
+                "#BF360C"
+            )
+
+            stock_sections += stock_header + market_sec + sentiment_sec + news_sec + fundamentals_sec + research_sec + trader_sec + decision_sec
 
         # --- Portfolio positions ---
         pos_section = ""
@@ -475,9 +575,6 @@ class GmailPusher:
             body=body,
             to_email=self.recipient_email,
         )
-        """Format weekly comprehensive report."""
-        portfolio_value = report.get("portfolio_value", 0)
-        gain_loss = report.get("gain_loss", 0)
         positions = report.get("positions", [])
         recommendations = report.get("recommendations", [])
 
