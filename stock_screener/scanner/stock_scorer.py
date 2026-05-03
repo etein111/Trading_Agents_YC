@@ -66,6 +66,15 @@ class StockScorer:
         stocks = SECTORS.get(sector, {}).get("stocks", [])
         return [self.score_stock(s) for s in stocks]
 
+    def score_and_rank_all(self) -> list[dict]:
+        """Score all stocks across all sectors, return sorted by composite descending."""
+        all_scores = []
+        for sector in SECTORS:
+            scored = self.score_sector_stocks(sector)
+            all_scores.extend([{**s.__dict__, "ticker": s.stock} for s in scored])
+        all_scores.sort(key=lambda x: x["composite"], reverse=True)
+        return all_scores
+
     def _find_sector(self, ticker: str) -> str:
         for sector, cfg in SECTORS.items():
             if ticker in cfg["stocks"]:

@@ -104,12 +104,15 @@ class SchedulerService:
 
     def _load_queue(self):
         """Load task queue from disk."""
+        from scheduler.tasks import TASK_CALLBACKS
         if os.path.exists(self.task_queue_file):
             try:
                 with open(self.task_queue_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     with self._lock:
                         self.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+                        for task in self.tasks:
+                            task.callback = TASK_CALLBACKS.get(task.name)
             except (json.JSONDecodeError, IOError, KeyError, TypeError):
                 with self._lock:
                     self.tasks = []
