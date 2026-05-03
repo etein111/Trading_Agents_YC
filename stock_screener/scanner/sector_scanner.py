@@ -122,6 +122,6 @@ class SectorScanner:
 
         return {
             "sectors": [s.__dict__ for s in sector_results],
-            "scan_date": datetime.now().strftime("%Y-%m-%d"),
+            "scan_date": pd.bdate_range(end=datetime.now().strftime("%Y-%m-%d"), periods=1)[0].strftime("%Y-%m-%d"),
             "methodology": "A×0.4 + B×0.3 + E×0.2 + C×0.1",
         }

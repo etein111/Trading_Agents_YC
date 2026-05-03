@@ -10,6 +10,12 @@ from dotenv import load_dotenv
 # Load .env so LLM provider settings are available
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
+# Set yfinance proxy globally before any TradingAgents imports
+import yfinance as _yf
+_http = os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or "http://127.0.0.1:7890"
+_https = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or "http://127.0.0.1:7890"
+_yf.set_config(proxy={"http": _http, "https": _https})
+
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.rating import parse_rating
