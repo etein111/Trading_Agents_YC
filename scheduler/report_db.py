@@ -36,11 +36,12 @@ class ReportDB:
         generated_at TEXT NOT NULL,
         subject TEXT,
         status TEXT DEFAULT 'pending',
-        body_html TEXT
+        body_html TEXT,
+        UNIQUE(report_type, scan_date)
     );
     CREATE TABLE IF NOT EXISTS stock_analysis (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        report_id INTEGER NOT NULL REFERENCES reports(id),
+        report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
         ticker TEXT NOT NULL,
         sector TEXT,
         composite_score REAL,
@@ -60,7 +61,7 @@ class ReportDB:
     );
     CREATE TABLE IF NOT EXISTS sector_rankings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        report_id INTEGER NOT NULL REFERENCES reports(id),
+        report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
         sector_name TEXT NOT NULL,
         rank INTEGER,
         score REAL,
@@ -71,7 +72,7 @@ class ReportDB:
     );
     CREATE TABLE IF NOT EXISTS portfolio_snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        report_id INTEGER NOT NULL REFERENCES reports(id),
+        report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
         ticker TEXT,
         shares INTEGER,
         entry_price REAL,
@@ -101,6 +102,11 @@ class ReportDB:
     def _insert_report(self, meta: dict) -> int:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
+            # Deduplicate: delete existing reports of same type+date (cascades to child tables)
+            cur.execute(
+                "DELETE FROM reports WHERE report_type = ? AND scan_date = ?",
+                (meta["report_type"], meta["scan_date"]),
+            )
             cur.execute(
                 """INSERT INTO reports (report_type, scan_date, generated_at, subject, status, body_html)
                    VALUES (?, ?, ?, ?, ?, ?)""",

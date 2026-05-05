@@ -2,10 +2,11 @@
 
 import json
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent.parent.parent.parent.parent / ".env")
 
 from tradingagents.llm_clients.factory import create_llm_client
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -34,7 +35,7 @@ Raw report:
 
 Return a JSON object:
 {{
-  "summary": "3-5 sentence ~100-word summary highlighting RSI, MACD, moving averages, trend, volume",
+  "summary": "3-5 sentence ~100-word summary in Chinese highlighting RSI, MACD, moving averages, trend, volume",
   "chart_data": {{
     "rsi": <float or null>,
     "sma_20": <float or null>,
@@ -54,7 +55,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of social sentiment and investor mood",
+  "summary": "~100-word summary in Chinese of social sentiment and investor mood",
   "chart_data": {{
     "sentiment_score": <float 0-1 or null>,
     "mention_volume": "<volume description or null>",
@@ -73,7 +74,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of news and macro factors",
+  "summary": "~100-word summary in Chinese of news and macro factors",
   "chart_data": {{
     "news_count": <int or null>,
     "polarity": <float -1 to 1 or null>,
@@ -90,7 +91,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of financial health and valuation",
+  "summary": "~100-word summary in Chinese of financial health and valuation",
   "chart_data": {{
     "pe_ratio": <float or null>,
     "forward_pe": <float or null>,
@@ -110,7 +111,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of bull/bear case and risk assessment",
+  "summary": "~100-word summary in Chinese of bull/bear case and risk assessment",
   "chart_data": {{
     "bull_case_prob": "<e.g. '65%' or null>",
     "bear_case_prob": "<e.g. '35%' or null>",
@@ -127,7 +128,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of entry strategy and risk/reward",
+  "summary": "~100-word summary in Chinese of entry strategy and risk/reward",
   "chart_data": {{
     "entry_price": <float or null>,
     "target_price": <float or null>,
@@ -146,7 +147,7 @@ Raw report:
 
 Return JSON:
 {{
-  "summary": "~100-word summary of rating rationale and key thesis",
+  "summary": "~100-word summary in Chinese of rating rationale and key thesis",
   "chart_data": {{
     "rating": "<Buy|Hold|Sell|Overweight|Underweight or null>",
     "conviction_pct": "<e.g. '78%' or null>",
@@ -160,7 +161,8 @@ Return ONLY valid JSON.""",
 
 class Distiller:
     def __init__(self):
-        self._client = _build_llm_client()
+        self._raw_client = _build_llm_client()
+        self._llm = self._raw_client.get_llm()
 
     def distill(self, raw_report: str, agent_name: str) -> dict:
         if not raw_report or not raw_report.strip():
@@ -170,10 +172,15 @@ class Distiller:
         prompt = template.format(raw_report=raw_report)
 
         try:
-            response = self._client.invoke(prompt)
-            parsed = json.loads(response)
+            response = self._llm.invoke(prompt)
+            text = response.content if hasattr(response, "content") else str(response)
+            # Strip <think>...</think> tags that some LLMs wrap around JSON
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            parsed = json.loads(text)
             if "summary" not in parsed or "chart_data" not in parsed:
                 return {"summary": raw_report[:200], "chart_data": {}}
             return parsed
         except (json.JSONDecodeError, Exception):
-            return {"summary": raw_report[:200], "chart_data": {}}
+            # Fallback: strip <think> tags from raw report, truncate to 200 chars
+            clean = re.sub(r'<think>.*?', '', raw_report, flags=re.DOTALL).strip()
+            return {"summary": clean[:200] if clean else "No data available.", "chart_data": {}}

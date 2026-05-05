@@ -116,7 +116,7 @@ def send_daily_report():
         "portfolio_positions": portfolio_positions,
         "deep_stocks": [d.__dict__ for d in deep_results],
     }
-    msg = pusher.format_deep_screener_report(report)
+    msg = pusher.format_deep_screener_report(report, report_type="screener")
     from scheduler.report_db import ReportDB
 
     db = ReportDB()
@@ -134,7 +134,7 @@ def send_daily_report():
         meta={
             "report_type": "screener",
             "scan_date": result["scan_date"],
-            "subject": f"[TradingAgents] Stock Screener — {result['scan_date']}",
+            "subject": msg.subject,
             "body_html": msg.body,
             "status": "pending",
         },

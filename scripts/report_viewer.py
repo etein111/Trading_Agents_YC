@@ -103,4 +103,10 @@ for report in reports:
             ]
             st.table(sec_data)
 
+        # Full report body
+        body = report.get("body_html", "")
+        if body:
+            with st.expander("📄 View Full Report Content"):
+                st.markdown(body, unsafe_allow_html=True)
+
         st.markdown("---")

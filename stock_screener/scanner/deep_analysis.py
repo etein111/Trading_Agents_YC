@@ -1,14 +1,15 @@
 """Layer 4: Deep agent analysis for top N stocks via TradingAgentsGraph."""
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 
-# Load .env so LLM provider settings are available
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+# Load .env so LLM provider settings are available (project root = 6 parents up from this file)
+load_dotenv(Path(__file__).resolve().parent.parent.parent.parent.parent.parent / ".env")
 
 # Set yfinance proxy globally before any TradingAgents imports
 import yfinance as _yf
@@ -144,7 +145,14 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
         )
 
 
+def _strip_think(text: str) -> str:
+    """Remove <think>... tags from LLM output."""
+    return re.sub(r'<think>.*?', '', text, flags=re.DOTALL).strip()
+
+
 def _trunc(text: str, max_chars: int = 3000) -> str:
+    """Truncate text after stripping <think> tags."""
+    text = _strip_think(text)
     if not text:
         return ""
     return text[:max_chars] if len(text) > max_chars else text
