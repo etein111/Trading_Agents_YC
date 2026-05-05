@@ -146,8 +146,14 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
 
 
 def _strip_think(text: str) -> str:
-    """Remove <think>... tags from LLM output."""
-    return re.sub(r'<think>.*?', '', text, flags=re.DOTALL).strip()
+    """Remove <think>... tags from LLM output.
+
+    Uses both non-greedy (first closed block) and greedy (unclosed trailing block)
+    patterns to handle all LLM output formats.
+    """
+    text = re.sub(r'<think>.*?', '', text, flags=re.DOTALL).strip()
+    text = re.sub(r'<think>.*', '', text, flags=re.DOTALL).strip()
+    return text
 
 
 def _trunc(text: str, max_chars: int = 3000) -> str:

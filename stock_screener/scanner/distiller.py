@@ -46,7 +46,7 @@ Return a JSON object:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "social": """You are a financial analyst summarizing a Social Media Analyst report.
 
@@ -65,7 +65,7 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "news": """You are a financial analyst summarizing a News Analyst report.
 
@@ -82,7 +82,7 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "fundamentals": """You are a financial analyst summarizing a Fundamentals Analyst report.
 
@@ -102,7 +102,7 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "research": """You are a financial analyst summarizing a Research Manager investment plan.
 
@@ -119,7 +119,7 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "trader": """You are a financial analyst summarizing a Trader investment plan.
 
@@ -138,7 +138,7 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 
     "portfolio_manager": """You are a financial analyst summarizing a Portfolio Manager final decision.
 
@@ -155,8 +155,39 @@ Return JSON:
   }}
 }}
 
-Return ONLY valid JSON.""",
+Return ONLY valid JSON. Do NOT use <think> tags — return plain JSON only.""",
 }
+
+
+def _find_all_json_objects(text: str) -> list[dict]:
+    """Find all balanced JSON objects in text. Returns list of parsed dicts."""
+    objects = []
+    search_pos = 0
+    while search_pos < len(text):
+        brace_pos = text.find('{', search_pos)
+        if brace_pos < 0:
+            break
+        depth = 0
+        obj_end = -1
+        for i in range(brace_pos, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    obj_end = i
+                    break
+        if obj_end >= 0:
+            candidate_text = text[brace_pos:obj_end + 1]
+            try:
+                candidate = json.loads(candidate_text)
+                objects.append(candidate)
+            except json.JSONDecodeError:
+                pass
+            search_pos = obj_end + 1
+        else:
+            break
+    return objects
 
 
 class Distiller:
@@ -174,13 +205,46 @@ class Distiller:
         try:
             response = self._llm.invoke(prompt)
             text = response.content if hasattr(response, "content") else str(response)
-            # Strip <think>...</think> tags that some LLMs wrap around JSON
-            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
-            parsed = json.loads(text)
+            # Remove <think>... blocks (non-greedy first, then greedy for unclosed trailing tag)
+            text = re.sub(r'<think>.*?', '', text, flags=re.DOTALL).strip()
+            text = re.sub(r'<think>.*', '', text, flags=re.DOTALL).strip()
+
+            # Find ALL balanced JSON objects in the stripped text.
+            # The LLM may embed the schema example as the first JSON and the actual
+            # response as a later JSON — use the LAST one that has both required keys.
+            all_objs = _find_all_json_objects(text)
+
+            # Find all candidates with both required keys; prefer the LAST
+            parsed = None
+            for candidate in all_objs:
+                if "summary" in candidate and "chart_data" in candidate:
+                    parsed = candidate  # keep overwriting → LAST wins
+
+            # Fallback: if no object had both keys, try regex extraction of summary + chart_data
+            if parsed is None:
+                chart_data = {}
+                for kv_match in re.finditer(r'"(\w+)"\s*:\s*([0-9."+-]+)', text):
+                    k, v = kv_match.group(1), kv_match.group(2)
+                    try:
+                        chart_data[k] = int(v) if v.lstrip('-').isdigit() else float(v)
+                    except ValueError:
+                        chart_data[k] = v.strip('"')
+
+                summary_candidates = [
+                    m.group(1) for m in re.finditer(r'"summary"\s*:\s*"(.*?)"', text, re.DOTALL)
+                ]
+                if summary_candidates:
+                    parsed = {"summary": summary_candidates[-1], "chart_data": chart_data}
+
+            if parsed is None:
+                print(f"[Distiller] {agent_name}: no valid JSON with required keys found")
+                return {"summary": "No data available.", "chart_data": {}}
+
             if "summary" not in parsed or "chart_data" not in parsed:
-                return {"summary": raw_report[:200], "chart_data": {}}
+                print(f"[Distiller] {agent_name}: valid JSON but missing keys")
+                return {"summary": "No data available.", "chart_data": {}}
+
             return parsed
-        except (json.JSONDecodeError, Exception):
-            # Fallback: strip <think> tags from raw report, truncate to 200 chars
-            clean = re.sub(r'<think>.*?', '', raw_report, flags=re.DOTALL).strip()
-            return {"summary": clean[:200] if clean else "No data available.", "chart_data": {}}
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"[Distiller] {agent_name}: exception {e}")
+            return {"summary": "No data available.", "chart_data": {}}
