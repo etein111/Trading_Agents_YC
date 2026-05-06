@@ -12,3 +12,12 @@ def test_score_stock_returns_all_dimensions():
     assert hasattr(result, 'above_peer')
     assert result.sector == "Technology"
     assert result.stock == "AMZN"
+
+
+def test_score_tickers_returns_scored_results():
+    from stock_screener.scanner.stock_scorer import StockScorer
+    scorer = StockScorer()
+    results = scorer.score_tickers(["AMZN", "GOOG"], sector="Technology")
+    assert len(results) == 2
+    assert all(hasattr(r, "composite") for r in results)
+    assert all(r.sector == "Technology" for r in results)
