@@ -1,6 +1,6 @@
 {
-  "cash_balance": 1400,
-  "last_updated": "2026-05-01",
+  "cash_balance": 561.00,
+  "last_updated": "2026-05-06",
   "positions": [
     {
       "ticker": "AMZN",
@@ -8,6 +8,20 @@
       "entry_price": 258.5,
       "entry_date": "2026-04-29",
       "broker": "Trade25"
+    },
+    {
+      "ticker": "DRAM",
+      "shares": 15,
+      "entry_price": 42.28,
+      "entry_date": "2026-05-04",
+      "broker": ""
+    },
+    {
+      "ticker": "XE",
+      "shares": 14,
+      "entry_price": 28.2,
+      "entry_date": "2026-05-05",
+      "broker": ""
     }
   ]
 }
