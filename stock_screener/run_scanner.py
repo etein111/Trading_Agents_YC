@@ -51,7 +51,7 @@ def run_daily_scan() -> dict:
     # Layer 3: Aggregate
     agg = Aggregator()
     aggregated = agg.aggregate(all_scores)
-    top_by_sector = agg.top_per_sector(all_scores, top_n=3)
+    top_by_sector = agg.top_per_sector(all_scores, top_n=1)
 
     # Layer 4: Portfolio adjustments (if PortfolioManager available)
     if _has_portfolio_manager:
@@ -88,11 +88,11 @@ def send_daily_report():
         raise ImportError("GmailPusher not available - check scheduler package installation")
     result = run_daily_scan()
 
-    # Deep agent analysis for top 8 stocks
+    # Deep agent analysis for top 6 stocks
     all_stocks = result["all_stocks"]
-    top_tickers = [s["ticker"] for s in all_stocks[:8]]
+    top_tickers = [s["ticker"] for s in all_stocks[:6]]
     from stock_screener.scanner.deep_analysis import run_deep_analysis
-    deep_results = run_deep_analysis(top_tickers, result["scan_date"], SECTORS, top_n=8)
+    deep_results = run_deep_analysis(top_tickers, result["scan_date"], SECTORS, top_n=6)
     # Fill composite scores from pre-computed all_stocks
     score_map = {s["ticker"]: s["composite"] for s in all_stocks}
     for d in deep_results:
