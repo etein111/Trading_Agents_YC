@@ -91,6 +91,18 @@ for report in reports:
                     })
                 st.table(data)
 
+        # Show sector recommendations (top N per sector, without deep analysis)
+        sector_recs = db.get_sector_recommendations(report["id"])
+        if sector_recs:
+            st.markdown("**各板块推荐（无深度分析）**")
+            rec_data = [
+                {"Ticker": r["ticker"], "Sector": r.get("sector", ""),
+                 "Score": f"{r.get('composite_score', 0):.3f}",
+                 "Rating": r.get("rating", "")}
+                for r in sector_recs
+            ]
+            st.table(rec_data)
+
         # Show sectors if available
         sectors = db.get_sector_rankings(report["id"])
         if sectors:

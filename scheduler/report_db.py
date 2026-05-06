@@ -78,6 +78,14 @@ class ReportDB:
         entry_price REAL,
         broker TEXT
     );
+    CREATE TABLE IF NOT EXISTS sector_stock_recommendations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        ticker TEXT NOT NULL,
+        sector TEXT,
+        composite_score REAL,
+        rating TEXT
+    );
     CREATE INDEX IF NOT EXISTS idx_reports_type_date ON reports(report_type, scan_date);
     CREATE INDEX IF NOT EXISTS idx_stock_analysis_ticker ON stock_analysis(ticker);
     CREATE INDEX IF NOT EXISTS idx_stock_analysis_report ON stock_analysis(report_id);
@@ -128,6 +136,7 @@ class ReportDB:
         meta: dict,
         stocks: list[dict],
         sectors: list[dict],
+        sector_recommendations: Optional[list[dict]] = None,
     ) -> int:
         report_id = self._insert_report(meta)
         with sqlite3.connect(self.db_path) as conn:
@@ -177,6 +186,22 @@ class ReportDB:
                         sec.get("fundamentals"),
                     ),
                 )
+
+            # Sector stock recommendations (top N per sector, excluding deep analysis)
+            if sector_recommendations:
+                for rec in sector_recommendations:
+                    cur.execute(
+                        """INSERT INTO sector_stock_recommendations
+                           (report_id, ticker, sector, composite_score, rating)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            report_id,
+                            rec.get("ticker", ""),
+                            rec.get("sector", ""),
+                            rec.get("composite_score") or rec.get("composite", 0),
+                            rec.get("rating", ""),
+                        ),
+                    )
             conn.commit()
             return report_id
 
@@ -286,6 +311,15 @@ class ReportDB:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM portfolio_snapshots WHERE report_id = ?",
+                (report_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_sector_recommendations(self, report_id: int) -> list[dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM sector_stock_recommendations WHERE report_id = ? ORDER BY sector, composite_score DESC",
                 (report_id,),
             ).fetchall()
             return [dict(r) for r in rows]

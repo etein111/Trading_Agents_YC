@@ -140,6 +140,11 @@ def send_daily_report():
         },
         stocks=[{**s.__dict__} for s in deep_results],
         sectors=sectors_data,
+        sector_recommendations=[
+            {**s, "sector": sector}
+            for sector, stocks in result["top_by_sector"].items()
+            for s in stocks
+        ],
     )
 
     # Try to send; update status on success/failure
