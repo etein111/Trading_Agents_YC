@@ -51,7 +51,7 @@ def run_daily_scan() -> dict:
     # Layer 3: Aggregate
     agg = Aggregator()
     aggregated = agg.aggregate(all_scores)
-    top_by_sector = agg.top_per_sector(all_scores, top_n=1)
+    top_by_sector = agg.top_per_sector(all_scores, top_n=3)
 
     # Layer 4: Portfolio adjustments (if PortfolioManager available)
     if _has_portfolio_manager:
