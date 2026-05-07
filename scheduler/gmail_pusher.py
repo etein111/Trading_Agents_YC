@@ -622,29 +622,29 @@ class GmailPusher:
         )
 
     def format_theme_report(self, report: dict) -> "EmailMessage":
-        """Format theme scan report as email.
+        """Format theme scan report as email with sub-sector table and per-stock deep analysis.
 
-        report structure from ThemeScanner.scan():
+        report structure:
           {
             "theme": str,
-            "sub_sectors": [
-              {"sub_sector": str, "stocks": [dict, ...]},
-              ...
-            ],
+            "sub_sectors": [{"sub_sector": str, "stocks": [dict, ...]}, ...],
             "scan_date": str,
+            "portfolio_positions": list,
+            "deep_stocks": [DeepStockAnalysis, ...],
           }
         """
         theme = report.get("theme", "")
         scan_date = report.get("scan_date", "")
         sub_sectors = report.get("sub_sectors", [])
+        deep_stocks = report.get("deep_stocks", [])
 
+        # --- Sub-sector overview table ---
         sector_rows = ""
         for sub in sub_sectors:
             sub_name = html.escape(sub["sub_sector"])
             for stock_data in sub["stocks"]:
                 ticker = html.escape(stock_data.get("ticker", ""))
                 score = stock_data.get("composite", 0)
-                rating = stock_data.get("rating", "-")
                 momentum = stock_data.get("scores", {}).get("momentum", "-")
                 sector_rows += f"""
         <tr>
@@ -652,14 +652,9 @@ class GmailPusher:
           <td style="padding:5px">{sub_name}</td>
           <td style="padding:5px"><strong>{score:.3f}</strong></td>
           <td style="padding:5px">{momentum}</td>
-          <td style="padding:5px">{html.escape(rating)}</td>
         </tr>"""
 
-        body = f"""
-<div style="font-family:Arial,sans-serif;max-width:950px">
-  <h1 style="color:#333">Theme Scan: {html.escape(theme)}</h1>
-  <p><em>扫描日期: {scan_date} | 报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}</em></p>
-
+        overview = f"""
   <h2 style="margin-top:20px">子领域扫描结果</h2>
   <table style="border-collapse:collapse;width:100%" border="1" cellpadding="5" cellspacing="0">
     <tr style="background:{COLOR_HEADER_BG}">
@@ -667,11 +662,137 @@ class GmailPusher:
       <th style="padding:5px">子领域</th>
       <th style="padding:5px">综合得分</th>
       <th style="padding:5px">动量</th>
-      <th style="padding:5px">评级</th>
     </tr>
     {sector_rows}
-  </table>
+  </table>"""
 
+        # --- Per-stock deep agent analysis ---
+        stock_sections = ""
+        for stock in deep_stocks:
+            if stock.get("error"):
+                stock_sections += f"""
+        <div style="border:1px solid #ccc;padding:15px;margin:15px 0;background:#fff3f3">
+        <h2>{html.escape(stock.get('ticker', ''))} — {html.escape(stock.get('sector', ''))}</h2>
+        <p style="color:red">Error: {html.escape(stock['error'])}</p>
+        </div>"""
+                continue
+
+            ticker = html.escape(stock.get('ticker', ''))
+            sector = html.escape(stock.get('sector', ''))
+            composite = stock.get('composite_score', 0)
+            rating = stock.get('rating', 'Hold')
+            rating_color = {
+                "Buy": COLOR_BUY, "Overweight": COLOR_NEUTRAL, "Hold": "gray",
+                "Underweight": "#E65100", "Sell": COLOR_SELL
+            }.get(rating, "gray")
+            rating_badge = f"<span style='background:{rating_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px'>{html.escape(rating)}</span>"
+
+            stock_header = f"""
+        <div style="border:1px solid #333;padding:15px;margin:15px 0;border-radius:8px;background:#fff">
+          <h2 style="color:#1a1a1a;margin:0 0 8px">{ticker} — {sector}</h2>
+          <p style="font-size:13px;margin:0">
+            综合得分: <strong>{composite:.3f}</strong> &nbsp;|&nbsp; 评级: {rating_badge}
+          </p>
+        </div>"""
+
+            market_sec = _agent_section(
+                "技术面",
+                stock.get("market_summary", ""),
+                stock.get("market_chart_data", {}),
+                "#1565C0"
+            )
+            sentiment_sec = _agent_section(
+                "情绪面",
+                stock.get("sentiment_summary", ""),
+                stock.get("sentiment_chart_data", {}),
+                "#6A1B9A"
+            )
+            news_sec = _agent_section(
+                "宏观/新闻面",
+                stock.get("news_summary", ""),
+                stock.get("news_chart_data", {}),
+                "#E65100"
+            )
+            fundamentals_sec = _agent_section(
+                "基本面",
+                stock.get("fundamentals_summary", ""),
+                stock.get("fundamentals_chart_data", {}),
+                "#2E7D32"
+            )
+            research_sec = _agent_section(
+                "研究结论",
+                stock.get("investment_plan_summary", ""),
+                {},
+                "#0277BD"
+            )
+            trader_sec = _agent_section(
+                "交易计划",
+                stock.get("trader_plan_summary", ""),
+                {},
+                "#00695C"
+            )
+            final_sec = _agent_section(
+                "最终决策",
+                stock.get("final_decision_summary", ""),
+                {},
+                "#4E342E"
+            )
+
+            stock_sections += f"""
+        <div style="margin:20px 0">
+          {stock_header}
+          <h3 style="color:#333;border-bottom:2px solid {COLOR_HEADER_BG};padding-bottom:4px">📊 分析师报告</h3>
+          {market_sec}
+          {sentiment_sec}
+          {news_sec}
+          {fundamentals_sec}
+          <h3 style="color:#333;border-bottom:2px solid {COLOR_HEADER_BG};padding-bottom:4px">🧠 决策层</h3>
+          {research_sec}
+          {trader_sec}
+          {final_sec}
+        </div>"""
+
+        # --- Remaining stocks (in sub_sectors but not in deep_stocks) ---
+        deep_tickers = {s.get("ticker", "") for s in deep_stocks}
+        remaining_rows = ""
+        for sub in sub_sectors:
+            sub_name = html.escape(sub["sub_sector"])
+            for stock_data in sub["stocks"]:
+                ticker = stock_data.get("ticker", "")
+                if ticker in deep_tickers:
+                    continue
+                score = stock_data.get("composite", 0)
+                momentum = stock_data.get("scores", {}).get("momentum", "-")
+                remaining_rows += f"""
+        <tr>
+          <td style="padding:5px"><strong>{html.escape(ticker)}</strong></td>
+          <td style="padding:5px">{sub_name}</td>
+          <td style="padding:5px"><strong>{score:.3f}</strong></td>
+          <td style="padding:5px">{momentum}</td>
+        </tr>"""
+        remaining_section = ""
+        if remaining_rows:
+            remaining_section = f"""
+  <h2 style="margin-top:20px">其他推荐</h2>
+  <p>以下为各子领域评分靠前但未进入深度分析的股票</p>
+  <table style="border-collapse:collapse;width:100%" border="1" cellpadding="5" cellspacing="0">
+    <tr style="background:{COLOR_HEADER_BG}">
+      <th style="padding:5px">股票</th>
+      <th style="padding:5px">子领域</th>
+      <th style="padding:5px">综合得分</th>
+      <th style="padding:5px">动量</th>
+    </tr>
+    {remaining_rows}
+  </table>"""
+
+        body = f"""
+<div style="font-family:Arial,sans-serif;max-width:950px">
+  <h1 style="color:#333">Theme Scan: {html.escape(theme)}</h1>
+  <p><em>扫描日期: {scan_date} | 报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}</em></p>
+  {overview}
+  <h2 style="margin-top:20px">深度分析</h2>
+  {stock_sections}
+  {remaining_section}
   <p style="margin-top:20px"><em>Generated by TradingAgents Theme Scanner</em></p>
 </div>"""
 

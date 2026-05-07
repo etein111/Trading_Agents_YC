@@ -167,6 +167,23 @@ def send_theme_report(theme: str):
         raise ImportError("GmailPusher not available")
     result = run_theme_scan(theme)
 
+    # Collect top unique tickers from theme scan for deep analysis
+    seen, all_tickers = set(), []
+    for sub in result["sub_sectors"]:
+        for stock in sub["stocks"]:
+            t = stock["ticker"]
+            if t not in seen:
+                seen.add(t)
+                all_tickers.append(t)
+    deep_tickers = all_tickers[:8]
+
+    # Run deep agent analysis on top theme stocks
+    from stock_screener.scanner.deep_analysis import run_deep_analysis
+    deep_results = run_deep_analysis(deep_tickers, result["scan_date"], SECTORS, top_n=8)
+    score_map = {s["ticker"]: s["composite"] for sub in result["sub_sectors"] for s in sub["stocks"]}
+    for d in deep_results:
+        d.composite_score = score_map.get(d.ticker, 0.0)
+
     portfolio_positions = []
     if _has_portfolio_manager:
         pm = PortfolioManager("data/portfolio.json")
@@ -178,6 +195,7 @@ def send_theme_report(theme: str):
         "sub_sectors": result["sub_sectors"],
         "scan_date": result["scan_date"],
         "portfolio_positions": portfolio_positions,
+        "deep_stocks": [d.__dict__ for d in deep_results],
     }
     msg = pusher.format_theme_report(report)
 
@@ -192,7 +210,7 @@ def send_theme_report(theme: str):
             "body_html": msg.body,
             "status": "pending",
         },
-        stocks=[],
+        stocks=[{**s.__dict__} for s in deep_results],
         sectors=[],
     )
 

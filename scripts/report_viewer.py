@@ -1,10 +1,14 @@
 """Streamlit web interface for browsing historical TradingAgents reports."""
 
-import streamlit as st
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add worktree to sys.path BEFORE any other imports
+worktree_root = str(Path(__file__).parent.parent)
+if worktree_root not in sys.path:
+    sys.path.insert(0, worktree_root)
+
+import streamlit as st
 
 from scheduler.report_db import ReportDB
 from scheduler.gmail_pusher import GmailPusher, EmailMessage
@@ -92,13 +96,20 @@ for report in reports:
                 st.table(data)
 
         # Show sector recommendations (top N per sector, without deep analysis)
-        sector_recs = db.get_sector_recommendations(report["id"])
+        import sqlite3
+        db_path = "D:/yechuan/work/My_project/TradingAgents/.claude/worktrees/email-beautification/data/reports.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        sector_recs = conn.execute(
+            "SELECT ticker, sector, composite_score, rating FROM sector_stock_recommendations WHERE report_id = ? ORDER BY sector, composite_score DESC",
+            (report["id"],)
+        ).fetchall()
+        conn.close()
         if sector_recs:
             st.markdown("**各板块推荐（无深度分析）**")
             rec_data = [
-                {"Ticker": r["ticker"], "Sector": r.get("sector", ""),
-                 "Score": f"{r.get('composite_score', 0):.3f}",
-                 "Rating": r.get("rating", "")}
+                {"Ticker": r["ticker"], "Sector": r["sector"],
+                 "Score": f"{r['composite_score']:.3f}", "Rating": r["rating"]}
                 for r in sector_recs
             ]
             st.table(rec_data)
