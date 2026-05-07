@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 _env_path = Path(__file__).parent.parent.parent.parent.parent / ".env"
 load_dotenv(_env_path)
 
-from stock_screener.run_scanner import run_daily_scan, send_daily_report
+from stock_screener.run_scanner import run_daily_scan, send_daily_report, run_theme_scan, send_theme_report
 from scheduler.gmail_pusher import GmailPusher
 
 
@@ -107,9 +107,15 @@ def weekly_weight_review_callback():
     _build_deep_report(result, top_n=8, report_type="weekly", scan_date=week_str)
 
 
+def theme_scan_callback(theme: str = "AI"):
+    """Run theme scan and send email report."""
+    _run_and_wait(send_theme_report, theme)
+
+
 TASK_CALLBACKS = {
     "screener_daily": screener_daily_callback,
     "screener_report": screener_report_callback,
     "afterhours_report": afterhours_report_callback,
     "weekly_weight_review": weekly_weight_review_callback,
+    "theme_scan": theme_scan_callback,
 }
