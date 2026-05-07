@@ -152,3 +152,51 @@ def send_daily_report():
         db.update_status(report_id, "sent")
     else:
         db.update_status(report_id, "failed")
+
+
+def run_theme_scan(theme: str) -> dict:
+    """Run theme scan: LLM deduces sub-sectors, picks stocks, scores them."""
+    from stock_screener.scanner.theme_scanner import ThemeScanner
+    scanner = ThemeScanner()
+    return scanner.scan(theme)
+
+
+def send_theme_report(theme: str):
+    """Run theme scan and send email report."""
+    if not _has_gmail_pusher:
+        raise ImportError("GmailPusher not available")
+    result = run_theme_scan(theme)
+
+    portfolio_positions = []
+    if _has_portfolio_manager:
+        pm = PortfolioManager("data/portfolio.json")
+        portfolio_positions = pm.get_positions()
+
+    pusher = GmailPusher("yechuan958@gmail.com", "yechuan958@gmail.com")
+    report = {
+        "theme": result["theme"],
+        "sub_sectors": result["sub_sectors"],
+        "scan_date": result["scan_date"],
+        "portfolio_positions": portfolio_positions,
+    }
+    msg = pusher.format_theme_report(report)
+
+    from scheduler.report_db import ReportDB
+    db = ReportDB()
+
+    report_id = db.save_screener_report(
+        meta={
+            "report_type": "theme",
+            "scan_date": result["scan_date"],
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        stocks=[],
+        sectors=[],
+    )
+
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
