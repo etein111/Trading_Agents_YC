@@ -88,11 +88,11 @@ def send_daily_report():
         raise ImportError("GmailPusher not available - check scheduler package installation")
     result = run_daily_scan()
 
-    # Deep agent analysis for top 8 stocks
+    # Deep agent analysis for top 6 stocks
     all_stocks = result["all_stocks"]
-    top_tickers = [s["ticker"] for s in all_stocks[:8]]
+    top_tickers = [s["ticker"] for s in all_stocks[:6]]
     from stock_screener.scanner.deep_analysis import run_deep_analysis
-    deep_results = run_deep_analysis(top_tickers, result["scan_date"], SECTORS, top_n=8)
+    deep_results = run_deep_analysis(top_tickers, result["scan_date"], SECTORS, top_n=6)
     # Fill composite scores from pre-computed all_stocks
     score_map = {s["ticker"]: s["composite"] for s in all_stocks}
     for d in deep_results:
@@ -116,5 +116,105 @@ def send_daily_report():
         "portfolio_positions": portfolio_positions,
         "deep_stocks": [d.__dict__ for d in deep_results],
     }
-    msg = pusher.format_deep_screener_report(report)
-    pusher.send_with_retry(msg)
+    msg = pusher.format_deep_screener_report(report, report_type="screener")
+    from scheduler.report_db import ReportDB
+
+    db = ReportDB()
+    sectors_data = [
+        {"sector_name": s["name"], "rank": s["rank"],
+         "score": s["score"],
+         "momentum": s.get("breakdown", {}).get("momentum"),
+         "valuation": s.get("breakdown", {}).get("valuation"),
+         "macro_score": s.get("breakdown", {}).get("macro"),
+         "fundamentals": s.get("breakdown", {}).get("fundamentals")}
+        for s in result["sectors"]
+    ]
+
+    report_id = db.save_screener_report(
+        meta={
+            "report_type": "screener",
+            "scan_date": result["scan_date"],
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        stocks=[{**s.__dict__} for s in deep_results],
+        sectors=sectors_data,
+        sector_recommendations=[
+            {**s, "sector": sector}
+            for sector, stocks in result["top_by_sector"].items()
+            for s in stocks
+        ],
+    )
+
+    # Try to send; update status on success/failure
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
+
+
+def run_theme_scan(theme: str) -> dict:
+    """Run theme scan: LLM deduces sub-sectors, picks stocks, scores them."""
+    from stock_screener.scanner.theme_scanner import ThemeScanner
+    scanner = ThemeScanner()
+    return scanner.scan(theme)
+
+
+def send_theme_report(theme: str):
+    """Run theme scan and send email report."""
+    if not _has_gmail_pusher:
+        raise ImportError("GmailPusher not available")
+    result = run_theme_scan(theme)
+
+    # Collect top unique tickers from theme scan for deep analysis
+    seen, all_tickers = set(), []
+    for sub in result["sub_sectors"]:
+        for stock in sub["stocks"]:
+            t = stock["ticker"]
+            if t not in seen:
+                seen.add(t)
+                all_tickers.append(t)
+    deep_tickers = all_tickers[:8]
+
+    # Run deep agent analysis on top theme stocks
+    from stock_screener.scanner.deep_analysis import run_deep_analysis
+    deep_results = run_deep_analysis(deep_tickers, result["scan_date"], SECTORS, top_n=8)
+    score_map = {s["ticker"]: s["composite"] for sub in result["sub_sectors"] for s in sub["stocks"]}
+    for d in deep_results:
+        d.composite_score = score_map.get(d.ticker, 0.0)
+
+    portfolio_positions = []
+    if _has_portfolio_manager:
+        pm = PortfolioManager("data/portfolio.json")
+        portfolio_positions = pm.get_positions()
+
+    pusher = GmailPusher("yechuan958@gmail.com", "yechuan958@gmail.com")
+    report = {
+        "theme": result["theme"],
+        "sub_sectors": result["sub_sectors"],
+        "scan_date": result["scan_date"],
+        "portfolio_positions": portfolio_positions,
+        "deep_stocks": [d.__dict__ for d in deep_results],
+    }
+    msg = pusher.format_theme_report(report)
+
+    from scheduler.report_db import ReportDB
+    db = ReportDB()
+
+    report_id = db.save_screener_report(
+        meta={
+            "report_type": "theme",
+            "scan_date": result["scan_date"],
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        stocks=[{**s.__dict__} for s in deep_results],
+        sectors=[],
+    )
+
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
