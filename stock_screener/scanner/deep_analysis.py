@@ -1,14 +1,15 @@
 """Layer 4: Deep agent analysis for top N stocks via TradingAgentsGraph."""
 
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 
-# Load .env so LLM provider settings are available
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+# Load .env so LLM provider settings are available (project root = 6 parents up from this file)
+load_dotenv(Path(__file__).resolve().parent.parent.parent.parent.parent.parent / ".env")
 
 # Set yfinance proxy globally before any TradingAgents imports
 import yfinance as _yf
@@ -59,6 +60,17 @@ class DeepStockAnalysis:
     final_decision: str = ""
     rating: str = "Hold"
     error: Optional[str] = None
+    market_summary: str = ""
+    market_chart_data: dict = field(default_factory=dict)
+    sentiment_summary: str = ""
+    sentiment_chart_data: dict = field(default_factory=dict)
+    news_summary: str = ""
+    news_chart_data: dict = field(default_factory=dict)
+    fundamentals_summary: str = ""
+    fundamentals_chart_data: dict = field(default_factory=dict)
+    investment_plan_summary: str = ""
+    trader_plan_summary: str = ""
+    final_decision_summary: str = ""
 
 
 def run_deep_analysis(
@@ -85,6 +97,18 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
         )
         final_state, _ = graph.propagate(ticker, trade_date)
 
+        from .distiller import Distiller
+        distiller = Distiller()
+
+        # Distill each agent report
+        market_dist = distiller.distill(final_state.get("market_report", ""), "market")
+        sentiment_dist = distiller.distill(final_state.get("sentiment_report", ""), "social")
+        news_dist = distiller.distill(final_state.get("news_report", ""), "news")
+        fundamentals_dist = distiller.distill(final_state.get("fundamentals_report", ""), "fundamentals")
+        research_dist = distiller.distill(final_state.get("investment_plan", ""), "research")
+        trader_dist = distiller.distill(final_state.get("trader_investment_plan", ""), "trader")
+        final_dist = distiller.distill(final_state.get("final_trade_decision", ""), "portfolio_manager")
+
         # Extract rating from final_trade_decision text
         rating = parse_rating(final_state.get("final_trade_decision", ""))
 
@@ -100,6 +124,17 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
             trader_plan=_trunc(final_state.get("trader_investment_plan", "")),
             final_decision=_trunc(final_state.get("final_trade_decision", "")),
             rating=rating,
+            market_summary=market_dist.get("summary", ""),
+            market_chart_data=market_dist.get("chart_data", {}),
+            sentiment_summary=sentiment_dist.get("summary", ""),
+            sentiment_chart_data=sentiment_dist.get("chart_data", {}),
+            news_summary=news_dist.get("summary", ""),
+            news_chart_data=news_dist.get("chart_data", {}),
+            fundamentals_summary=fundamentals_dist.get("summary", ""),
+            fundamentals_chart_data=fundamentals_dist.get("chart_data", {}),
+            investment_plan_summary=research_dist.get("summary", ""),
+            trader_plan_summary=trader_dist.get("summary", ""),
+            final_decision_summary=final_dist.get("summary", ""),
         )
     except Exception as e:
         return DeepStockAnalysis(
@@ -110,7 +145,20 @@ def _analyze_one(ticker: str, trade_date: str, sectors_map: dict) -> DeepStockAn
         )
 
 
+def _strip_think(text: str) -> str:
+    """Remove <think>... tags from LLM output.
+
+    Uses both non-greedy (first closed block) and greedy (unclosed trailing block)
+    patterns to handle all LLM output formats.
+    """
+    text = re.sub(r'<think>.*?', '', text, flags=re.DOTALL).strip()
+    text = re.sub(r'<think>.*', '', text, flags=re.DOTALL).strip()
+    return text
+
+
 def _trunc(text: str, max_chars: int = 3000) -> str:
+    """Truncate text after stripping <think> tags."""
+    text = _strip_think(text)
     if not text:
         return ""
     return text[:max_chars] if len(text) > max_chars else text

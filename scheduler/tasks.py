@@ -5,10 +5,11 @@ import threading
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file for all callbacks
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Load .env from project root (4 parents up from scheduler/tasks.py)
+_env_path = Path(__file__).parent.parent.parent.parent.parent / ".env"
+load_dotenv(_env_path)
 
-from stock_screener.run_scanner import run_daily_scan, send_daily_report
+from stock_screener.run_scanner import run_daily_scan, send_daily_report, run_theme_scan, send_theme_report
 from scheduler.gmail_pusher import GmailPusher
 
 
@@ -29,11 +30,17 @@ def screener_report_callback():
     _run_and_wait(send_daily_report)
 
 
-def afterhours_report_callback():
-    """Send afterhours report email at 20:00 (market close)."""
-    result = run_daily_scan()
+def _build_deep_report(result: dict, top_n: int, report_type: str, scan_date: str) -> tuple:
+    """Shared logic for deep analysis: run DEEP_ANALYSIS, build message, save to DB, send email."""
+    all_stocks = result["all_stocks"]
+    top_tickers = [s["ticker"] for s in all_stocks[:top_n]]
+    from stock_screener.scanner.deep_analysis import run_deep_analysis
+    from stock_screener.scanner.config import SECTORS
+    deep_results = run_deep_analysis(top_tickers, scan_date, SECTORS, top_n=top_n)
+    score_map = {s["ticker"]: s["composite"] for s in all_stocks}
+    for d in deep_results:
+        d.composite_score = score_map.get(d.ticker, 0.0)
 
-    # Build afterhours positions from PortfolioManager if available
     positions = []
     try:
         from tradingagents.agents.portfolio.manager import PortfolioManager
@@ -46,50 +53,63 @@ def afterhours_report_callback():
         sender_email=os.getenv("GMAIL_EMAIL"),
         recipient_email=os.getenv("GMAIL_EMAIL")
     )
-    # Use top movers from scan as "afterhours analysis"
-    top_movers = [
-        f"{s['ticker']} ({s.get('composite', 0):.3f})"
-        for s in result["all_stocks"][:5]
+    msg = pusher.format_deep_screener_report({
+        "scan_date": scan_date,
+        "sector_rankings": result["sectors"],
+        "all_stocks": result["all_stocks"],
+        "top_by_sector": result["top_by_sector"],
+        "adjustments": result["adjustments"],
+        "unchanged": result["unchanged"],
+        "anomalies": result["anomalies"],
+        "portfolio_positions": positions,
+        "deep_stocks": [d.__dict__ for d in deep_results],
+    }, report_type=report_type)
+
+    from scheduler.report_db import ReportDB
+    db = ReportDB()
+    sectors_data = [
+        {"sector_name": s["name"], "rank": s["rank"],
+         "score": s["score"],
+         "momentum": s.get("breakdown", {}).get("momentum"),
+         "valuation": s.get("breakdown", {}).get("valuation"),
+         "macro_score": s.get("breakdown", {}).get("macro"),
+         "fundamentals": s.get("breakdown", {}).get("fundamentals")}
+        for s in result["sectors"]
     ]
-    msg = pusher.format_afterhours_report({
-        "date": __import__("datetime").datetime.now().strftime("%Y-%m-%d"),
-        "positions": positions,
-        "analysis": f"Top movers today: {', '.join(top_movers)}. "
-                    f"Sector leaders: {[s['name'] for s in result['sectors'][:3]]}",
-    })
-    pusher.send_with_retry(msg)
+    report_id = db.save_screener_report(
+        meta={
+            "report_type": report_type,
+            "scan_date": scan_date,
+            "subject": msg.subject,
+            "body_html": msg.body,
+            "status": "pending",
+        },
+        stocks=[{**s.__dict__} for s in deep_results],
+        sectors=sectors_data,
+    )
+    if pusher.send_with_retry(msg):
+        db.update_status(report_id, "sent")
+    else:
+        db.update_status(report_id, "failed")
+
+
+def afterhours_report_callback():
+    """Send afterhours report email at 20:00 (market close)."""
+    result = run_daily_scan()
+    scan_date = result.get("scan_date") or __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+    _build_deep_report(result, top_n=5, report_type="afterhours", scan_date=scan_date)
 
 
 def weekly_weight_review_callback():
     """Send weekly weight review email on Friday 09:00."""
     result = run_daily_scan()
+    week_str = __import__("datetime").datetime.now().strftime("%Y-W%W")
+    _build_deep_report(result, top_n=8, report_type="weekly", scan_date=week_str)
 
-    # Collect sector weight recommendations from scan
-    recommendations = [
-        f"Top sector: {s['name']} (score {s['score']:.3f})"
-        for s in result["sectors"][:3]
-    ]
-    adjustments = result.get("adjustments", [])
-    if adjustments:
-        recommendations.append(
-            f"Action items: {len(adjustments)} adjustment(s) recommended"
-        )
 
-    pusher = GmailPusher(
-        sender_email=os.getenv("GMAIL_EMAIL"),
-        recipient_email=os.getenv("GMAIL_EMAIL")
-    )
-    msg = pusher.format_weekly_report({
-        "week": __import__("datetime").datetime.now().strftime("%Y-W%W"),
-        "portfolio_value": 0,
-        "gain_loss": 0,
-        "positions": [],
-        "recommendations": recommendations,
-        "market_outlook": f"Sector rankings: " + " | ".join(
-            f"{s['rank']}. {s['name']}({s['score']:.3f})" for s in result["sectors"]
-        ),
-    })
-    pusher.send_with_retry(msg)
+def theme_scan_callback(theme: str = "AI"):
+    """Run theme scan and send email report."""
+    _run_and_wait(send_theme_report, theme)
 
 
 TASK_CALLBACKS = {
@@ -97,4 +117,5 @@ TASK_CALLBACKS = {
     "screener_report": screener_report_callback,
     "afterhours_report": afterhours_report_callback,
     "weekly_weight_review": weekly_weight_review_callback,
+    "theme_scan": theme_scan_callback,
 }

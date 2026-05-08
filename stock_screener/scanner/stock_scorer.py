@@ -66,6 +66,10 @@ class StockScorer:
         stocks = SECTORS.get(sector, {}).get("stocks", [])
         return [self.score_stock(s) for s in stocks]
 
+    def score_tickers(self, tickers: list[str], sector: str = "Unknown") -> list[StockScore]:
+        """Score an arbitrary list of tickers (no SECTORS config required)."""
+        return [self.score_stock(t) for t in tickers]
+
     def score_and_rank_all(self) -> list[dict]:
         """Score all stocks across all sectors, return sorted by composite descending."""
         all_scores = []
