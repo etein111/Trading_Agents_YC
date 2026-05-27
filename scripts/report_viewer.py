@@ -11,7 +11,6 @@ if worktree_root not in sys.path:
 import streamlit as st
 
 from scheduler.report_db import ReportDB
-from scheduler.gmail_pusher import GmailPusher, EmailMessage
 
 
 st.set_page_config(page_title="TradingAgents Report Viewer", layout="wide")
@@ -22,7 +21,7 @@ st.title("TradingAgents Report Viewer")
 st.sidebar.header("Filters")
 report_type = st.sidebar.selectbox(
     "Report Type",
-    options=["all", "screener", "afterhours", "premarket", "weekly"],
+    options=["all", "screener", "theme", "afterhours", "premarket", "weekly"],
     index=0,
 )
 date_from = st.sidebar.text_input("From Date (YYYY-MM-DD)", value="")
@@ -31,7 +30,9 @@ ticker_search = st.sidebar.text_input("Ticker Search (e.g. AMZN)", value="")
 
 # Build query
 rtype = None if report_type == "all" else report_type
-db = ReportDB()
+worktree_root = str(Path(__file__).parent.parent / ".claude" / "worktrees" / "email-beautification")
+db_path = str(Path(worktree_root) / "data" / "reports.db")
+db = ReportDB(db_path)
 
 if ticker_search:
     reports = db.search_by_ticker(ticker_search.upper())
@@ -48,6 +49,7 @@ st.write(f"Found {len(reports)} report(s)")
 
 TYPE_LABELS = {
     "screener": "Screener",
+    "theme": "Theme",
     "afterhours": "Afterhours",
     "premarket": "Pre-market",
     "weekly": "Weekly",
@@ -65,19 +67,7 @@ for report in reports:
                 f"**{report['scan_date']}** — {t} Report {status} — {report.get('subject', '')}"
             )
         with col2:
-            if st.button(f"Re-send", key=f"send_{report['id']}"):
-                pusher = GmailPusher("yechuan958@gmail.com", "yechuan958@gmail.com")
-                msg_body = report.get("body_html", "")
-                msg = EmailMessage(
-                    subject=report.get("subject", ""),
-                    body=msg_body,
-                    to_email="yechuan958@gmail.com",
-                )
-                if pusher.send_with_retry(msg):
-                    db.update_status(report["id"], "sent")
-                    st.success("Email re-sent!")
-                else:
-                    st.error("Failed to send email.")
+            pass
 
         # Show stock summaries if screener report
         if report["report_type"] == "screener":
@@ -97,7 +87,6 @@ for report in reports:
 
         # Show sector recommendations (top N per sector, without deep analysis)
         import sqlite3
-        db_path = "D:/yechuan/work/My_project/TradingAgents/.claude/worktrees/email-beautification/data/reports.db"
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         sector_recs = conn.execute(

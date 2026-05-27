@@ -1,3 +1,3 @@
-from .gmail_pusher import GmailPusher, EmailMessage
+from .report_db import ReportDB
 
-__all__ = ["GmailPusher", "EmailMessage"]
+__all__ = ["ReportDB"]
